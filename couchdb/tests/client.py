@@ -31,8 +31,8 @@ class ServerTestCase(unittest.TestCase):
             pass
 
     def test_server_vars(self):
-        version = self.server.version
-        config = self.server.config
+        version = self.server.version()
+        config = self.server.config()
         stats = self.server.stats()
         tasks = self.server.tasks()
 
@@ -75,7 +75,7 @@ class ServerTestCase(unittest.TestCase):
         b = self.server.create('python-tests-a')
         result = self.server.replicate('python-tests', 'python-tests-a', continuous=True)
         self.assertEquals(result['ok'], True)
-        version = tuple(int(i) for i in self.server.version.split('.')[:2])
+        version = tuple(int(i) for i in self.server.version().split('.')[:2])
         if version >= (0, 10):
             self.assertTrue('_local_id' in result)
 
@@ -243,8 +243,21 @@ class DatabaseTestCase(unittest.TestCase):
         for idx, i in enumerate(range(1, 6, 2)):
             self.assertEqual(i, res[idx].key)
 
+    def test_view_compaction(self):
+        for i in range(1, 6):
+            self.db.create({'i': i})
+        self.db['_design/test'] = {
+            'language': 'javascript',
+            'views': {
+                'multi_key': {'map': 'function(doc) { emit(doc.i, null); }'}
+            }
+        }
+
+        res = self.db.view('test/multi_key')
+        self.assertTrue(self.db.compact('test'))
+
     def test_view_function_objects(self):
-        if 'python' not in self.server.config['query_servers']:
+        if 'python' not in self.server.config()['query_servers']:
             return
 
         for i in range(1, 4):

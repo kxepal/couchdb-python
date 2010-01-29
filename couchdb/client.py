@@ -143,7 +143,6 @@ class Server(object):
         db.resource.head() # actually make a request to the database
         return db
 
-    @property
     def config(self):
         """The configuration of the CouchDB server.
 
@@ -156,7 +155,6 @@ class Server(object):
         status, headers, data = self.resource.get('_config')
         return data
 
-    @property
     def version(self):
         """The version string of the CouchDB server.
 
@@ -372,16 +370,21 @@ class Database(object):
         """
         self.resource.post('_ensure_full_commit')
 
-    def compact(self):
-        """Compact the database.
+    def compact(self, ddoc=None):
+        """Compact the database or a design document's index.
 
-        This will try to prune all revisions from the database.
+        Without an argument, this will try to prune all old revisions from the
+        database. With an argument, it will compact the index cache for all
+        views in the design document specified.
 
         :return: a boolean to indicate whether the compaction was initiated
                  successfully
         :rtype: `bool`
         """
-        _, _, data = self.resource.post('_compact')
+        if ddoc:
+            _, _, data = self.resource('_compact').post(ddoc)
+        else:
+            _, _, data = self.resource.post('_compact')
         return data['ok']
 
     def copy(self, src, dest):
@@ -647,7 +650,7 @@ class Database(object):
         If an object in the documents list is not a dictionary, this method
         looks for an ``items()`` method that can be used to convert the object
         to a dictionary. Effectively this means you can also use this method
-        with `schema.Document` objects.
+        with `mapping.Document` objects.
 
         :param documents: a sequence of dictionaries or `Document` objects, or
                           objects providing a ``items()`` method that can be
@@ -724,6 +727,11 @@ class Database(object):
                 yield json.decode(ln)
 
     def changes(self, **opts):
+        """Retrieve a changes feed from the database.
+
+        Takes since, feed, heartbeat and timeout options. The continuous feed
+        mode isn't supported yet, but normal and longpoll should work.
+        """
         if 'feed' in opts and opts['feed'] == 'continuous':
             return self._changes(**opts)
         _, _, data = self.resource.get('_changes', **opts)
