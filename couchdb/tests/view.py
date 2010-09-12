@@ -872,9 +872,7 @@ if __name__ == '__main__':
                 self.testRunner = unittest.TextTestRunner
             if isinstance(self.testRunner, (type, types.ClassType)):
                 try:
-                    testRunner = self.testRunner(verbosity=self.verbosity,
-                                                 failfast=self.failfast,
-                                                 buffer=self.buffer)
+                    testRunner = self.testRunner(verbosity=self.verbosity)
                 except TypeError:
                     # didn't accept the verbosity, buffer or failfast arguments
                     testRunner = self.testRunner()
