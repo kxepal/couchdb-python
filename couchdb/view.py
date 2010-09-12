@@ -22,7 +22,12 @@ from couchdb.util import CouchDBVersion
 __all__ = ['main', 'run']
 __docformat__ = 'restructuredtext en'
 
+class NullHandler(logging.Handler):
+    def emit(self, *args, **kwargs):
+        pass
+
 log = logging.getLogger('couchdb.view')
+log.addHandler(NullHandler())
 
 class ViewServerException(Exception):
 
