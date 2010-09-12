@@ -28,28 +28,23 @@ class ViewServerException(Exception):
 
     @CouchDBVersion.minimal(0, 9, 0)
     def encode(self):
-        err_type, id, reason = self.args
-        return {err_type: id, 'reason': reason}
+        id, reason = self.args
+        return {'error': id, 'reason': reason}
 
     @CouchDBVersion.minimal(0, 11, 0)
     def encode(self):
-        return self.args
+        return ['error'] + list(self.args)
 
 class Error(ViewServerException):
-    def __init__(self, id, reason):
-        super(Error, self).__init__('error', id, reason)
+    pass
 
 class FatalError(ViewServerException):
-    def __init__(self, id, reason):
-        super(FatalError, self).__init__('error', id, reason)
+    pass
 
 class Forbidden(ViewServerException):
-    def __init__(self, reason):
-        super(type(self), self).__init__('forbidden', reason)
 
     def encode(self):
-        forbidden, reason = self.args
-        return {forbidden: reason}
+        return {'forbidden': self.args[0]}
 
 def run(input=sys.stdin, output=sys.stdout):
     r"""CouchDB view function handler implementation for Python.
@@ -60,7 +55,7 @@ def run(input=sys.stdin, output=sys.stdout):
     def respond(obj):
         try:
             obj = json.encode(obj)
-        except ValueError as err:
+        except ValueError, err:
             log.exception('Error converting %r to json', obj)
             _log('Error converting object to JSON: %s' % err)
             _log('error on obj: %r' % obj)
@@ -93,7 +88,7 @@ def run(input=sys.stdin, output=sys.stdout):
         try:
             # context is defined below after all classes
             exec funstr in context, globals_
-        except Exception as err:
+        except Exception, err:
             raise Error('compilation_error', '%s:\n%s' % (err, funstr))
         try:
             func = globals_ and globals_.values()[0] or None
@@ -294,7 +289,7 @@ def run(input=sys.stdin, output=sys.stdout):
                     result = [[key, value] for key, value in function(doc)]
                 except ViewServerException:
                     raise
-                except Exception as err:
+                except Exception, err:
                     # javascript view server allows us to keep silence for non
                     # fatal errors, but I don't see any reason to do same thing
                     # for python view server because it's not Zen way and
@@ -327,7 +322,7 @@ def run(input=sys.stdin, output=sys.stdout):
                     result = function(*args[:function.func_code.co_argcount])
                 except ViewServerException:
                     raise
-                except Exception as err:
+                except Exception, err:
                     # see comments for same block at map_doc
                     msg = 'reduce function raised error:\n%s' % err
                     log.exception(msg)
@@ -357,7 +352,7 @@ def run(input=sys.stdin, output=sys.stdout):
 
         def handle_error(self, err, userctx):
             if isinstance(err, Forbidden):
-                reason = err.args[1]
+                reason = err.args[0]
                 log.warn('Access deny for user %s. Reason: %s', userctx, reason)
                 raise
             elif isinstance(err, AssertionError):
@@ -369,7 +364,7 @@ def run(input=sys.stdin, output=sys.stdout):
         def run_validate(self, func, newdoc, olddoc, userctx):
             try:
                 func(newdoc, olddoc, userctx)
-            except (AssertionError, Forbidden) as err:
+            except (AssertionError, Forbidden), err:
                 self.handle_error(err, userctx)
             return 1
 
@@ -456,7 +451,7 @@ def run(input=sys.stdin, output=sys.stdout):
                     break
                 try:
                     data = json.decode(line)
-                except ValueError as err:
+                except ValueError, err:
                     log.exception('Error converting JSON to object: %s\n'
                               'Reason: %s', line, err)
                     raise FatalError('json_decode_error', str(err))
@@ -499,7 +494,7 @@ def run(input=sys.stdin, output=sys.stdout):
                     log.debug('resp: %r ; type: %r', resp, type(resp))
                     raise Error('render_error',
                                 'undefined response from show function')
-            except Exception as err:
+            except Exception, err:
                 if args[0] is None and self.is_doc_request_path(args[1]):
                     raise Error('not_found', 'document not found')
                 if isinstance(err, ViewServerException):
@@ -526,7 +521,7 @@ def run(input=sys.stdin, output=sys.stdout):
                                 'undefined response from update function')
             except ViewServerException:
                 raise
-            except Exception as err:
+            except Exception, err:
                 log.exception('unexpected error occured')
                 raise Error('render_error', str(err))
 
@@ -548,7 +543,7 @@ def run(input=sys.stdin, output=sys.stdout):
                 self.blow_chunks('end')
             except ViewServerException:
                 raise
-            except Exception as err:
+            except Exception, err:
                 log.exception('unexpected error occured')
                 raise Error('render_error', str(err))
 
@@ -593,7 +588,7 @@ def run(input=sys.stdin, output=sys.stdout):
                 else:
                     raise Error('render_error', 'undefined response from render'
                                                 'function: %s' % resp)
-            except Exception as err:
+            except Exception, err:
                 _log('function raised error: %s' % err)
                 _log('stacktrace: %s' % traceback.format_exc())
                 if html_errors:
@@ -776,31 +771,33 @@ def run(input=sys.stdin, output=sys.stdout):
                     raise FatalError('unknown_command',
                                      'unknown command %s' % cmd[0])
                 retval = handlers[cmd[0]](*cmd[1:])
-            except FatalError as err:
-                log.critical('FatalError occured %s: %s',
-                             *err.args[1:], exc_info=True)
+            except FatalError, err:
+                log.exception('FatalError occured %s: %s', *err.args)
+                log.critical('Critical error occured, exiting')
                 respond(err.encode())
                 return 1
-            except Forbidden as err:
-                reason = err.args[1]
+            except Forbidden, err:
+                reason = err.args[0]
                 log.warn('ForbiddenError occured: %s', reason)
                 respond(err.encode())
-            except Error as err:
-                log.exception('Error occured %s: %s', *err.args[1:])
+            except Error, err:
+                log.exception('Error occured %s: %s', *err.args)
                 respond(err.encode())
-            except Exception as err:
+            except Exception, err:
                 err_name = type(err).__name__
                 err_msg = str(err)
-                log.critical('%s: %s', err_name, err_msg, exc_info=True)
                 respond(['error', err_name, err_msg])
+                log.exception('%s: %s', err_name, err_msg)
+                log.critical('Critical error occured, exiting')
                 return 1
             else:
                 log.debug('Returning  %r', retval)
                 respond(retval)
     except KeyboardInterrupt:
         return 0
-    except Exception as err:
-        log.critical('Unexpected error occured: %s', err, exc_info=True)
+    except Exception, err:
+        log.exception('Unexpected error occured: %s', err)
+        log.critical('Critical error occured, exiting')
         return 1
 
 
