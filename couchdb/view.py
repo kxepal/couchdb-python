@@ -57,6 +57,19 @@ def run(input=sys.stdin, output=sys.stdout):
     :param input: the readable file-like object to read input from
     :param output: the writable file-like object to write output to
     """
+    
+    def debug_dump_args(func):
+        argnames = func.func_code.co_varnames[:func.func_code.co_argcount]
+        fname = func.func_name
+        def wrapper(*args,**kwargs):
+            msg = 'Called `' + fname + '` with args:\n' + '\n'.join(
+                    '  %s = %s' % entry
+                    for entry in zip(argnames,args) + kwargs.items())
+            log.debug(msg)
+            return func(*args, **kwargs)
+        return wrapper
+    
+    @debug_dump_args
     def respond(obj):
         try:
             obj = json.encode(obj)
@@ -274,6 +287,7 @@ def run(input=sys.stdin, output=sys.stdout):
                 self.query_config.update(config)
             return True
 
+        @debug_dump_args
         def add_fun(self, string):
             self.functions.append(compile_func(string))
             self.functions_src.append(string)
@@ -284,6 +298,7 @@ def run(input=sys.stdin, output=sys.stdout):
     class Views(object):
         __slots__ = ()
 
+        @debug_dump_args
         def map_doc(self, doc):
             docid = doc.get('_id')
             log.debug('Running map functions for doc._id %s', docid)
@@ -317,6 +332,7 @@ def run(input=sys.stdin, output=sys.stdout):
                     doc = orig_doc.copy()
             return map_results
 
+        @debug_dump_args
         def reduce(self, reduce_funs, kvs, rereduce=False):
             reductions = []
             keys, values = rereduce and (None, kvs) or zip(*kvs)
@@ -347,6 +363,7 @@ def run(input=sys.stdin, output=sys.stdout):
                 raise Error('reduce_overflow_error', msg)
             return [True, reductions]
 
+        @debug_dump_args
         def rereduce(self, reduce_funs, values):
             return self.reduce(reduce_funs, values, rereduce=True)
 
@@ -366,6 +383,7 @@ def run(input=sys.stdin, output=sys.stdout):
                 log.warn('Access deny for user %s. Reason: %s', userctx, err)
                 raise Forbidden(str(err))
 
+        @debug_dump_args
         def run_validate(self, func, newdoc, olddoc, userctx):
             try:
                 func(newdoc, olddoc, userctx)
@@ -389,6 +407,7 @@ def run(input=sys.stdin, output=sys.stdout):
     class Filters(object):
         __slots__ = ()
 
+        @debug_dump_args
         def run_filter(self, func, docs, req, userctx=None):
             # userctx may not been passed
             return [True, [bool(func(doc, req, userctx)) for doc in docs]]
@@ -434,7 +453,8 @@ def run(input=sys.stdin, output=sys.stdout):
             if resp_content_type and not resp['headers'].get('Content-Type'):
                 resp['headers']['Content-Type'] = resp_content_type
             return resp
-
+        
+        @debug_dump_args
         def send(self, chunk):
             self.chunks.append(unicode(chunk))
 
@@ -476,9 +496,8 @@ def run(input=sys.stdin, output=sys.stdout):
         def is_doc_request_path(self, info):
             return len(info.path) > 5
 
+        @debug_dump_args
         def run_show(self, fun, *args):
-            log.debug('Running show function %s with args %s',
-                      fun.func_name, args)
             try:
                 self.reset_list()
                 Mime.reset_provides()
@@ -508,9 +527,8 @@ def run(input=sys.stdin, output=sys.stdout):
                     log.exception('unexpected error occured')
                     raise Error('render_error', str(err))
 
+        @debug_dump_args
         def run_update(self, fun, *args):
-            log.debug('Running update function %s with args %s',
-                      fun.func_name, args)
             try:
                 method = args[1]['method']
                 if method == 'GET':
@@ -530,9 +548,8 @@ def run(input=sys.stdin, output=sys.stdout):
                 log.exception('unexpected error occured')
                 raise Error('render_error', str(err))
 
+        @debug_dump_args
         def run_list(self, fun, *args):
-            log.debug('Running list function %s with args %s',
-                      fun.func_name, args)
             try:
                 Mime.reset_provides()
                 self.reset_list()
@@ -577,6 +594,19 @@ def run(input=sys.stdin, output=sys.stdout):
         @CouchDBVersion.minimal(0, 11, 0)
         def update(self, func, *args):
             return self.run_update(func, *args)
+                        
+        @CouchDBVersion.minimal(0, 10, 0)
+        def html_render_error(self, err, funstr):
+            import cgi
+            return {
+                'body':''.join([
+                '<html><body><h1>Render Error</h1>',
+                str(err),
+                '</p><h2>Stacktrace:</h2><code><pre>',
+                cgi.escape(traceback.format_exc()),
+                '</pre></code><h2>Function source:</h2><code><pre>',
+                cgi.escape(funstr)])
+            }
 
     Render = Render()
 
@@ -585,7 +615,8 @@ def run(input=sys.stdin, output=sys.stdout):
         __slots__ = ()
         row_line = {}
 
-        def render_function(self, func, args, funstr=None, html_errors=False):
+        @debug_dump_args
+        def render_function(self, func, args, funstr=None):
             try:
                 resp = func(*args)
                 if resp:
@@ -593,14 +624,14 @@ def run(input=sys.stdin, output=sys.stdout):
                 else:
                     raise Error('render_error', 'undefined response from render'
                                                 'function: %s' % resp)
+            except ViewServerException:
+                raise
             except Exception, err:
                 _log('function raised error: %s' % err)
                 _log('stacktrace: %s' % traceback.format_exc())
-                if html_errors:
-                    msg = self.html_render_error(err, funstr)
-                    raise Error('render_error', msg)
-                raise
+                raise Error('render_error', str(err))
 
+        @debug_dump_args
         def response_with(self, req, responders):
             best_mime = 'text/plain'
             best_key = None
@@ -624,10 +655,13 @@ def run(input=sys.stdin, output=sys.stdout):
             else:
                 return {'code': 406, 'body': 'Not Acceptable: %s' % accept}
 
+        @debug_dump_args
         def show_doc(self, funstr, doc, req=None):
+            log.debug('show_doc function: \n%s', funstr)
             func = compile_func(funstr)
             return self.render_function(func, [doc, req])
 
+        @debug_dump_args
         def list_begin(self, head, req):
             func = State.functions[0]
             self.row_line[func] = {
@@ -637,13 +671,13 @@ def run(input=sys.stdin, output=sys.stdout):
             }
             return self.render_function(func, [head, None, req, None])
 
+        @debug_dump_args
         def list_row(self, row, req):
             func = State.functions[0]
             funstr = State.functions_src[0]
             row_info = self.row_line.get(func, None)
             assert row_info is not None
-            resp = self.render_function(func, [None, row, req, row_info],
-                                        funstr, True)
+            resp = self.render_function(func, [None, row, req, row_info], funstr)
             if row_info['first_key'] is None:
                 row_info['first_key'] = row.get('key')
             row_info['prev_key'] = row.get('key')
@@ -651,22 +685,11 @@ def run(input=sys.stdin, output=sys.stdout):
             self.row_line[func] = row_info
             return resp
 
+        @debug_dump_args
         def list_tail(self, req):
             func = State.functions[0]
             row_info = self.row_line.pop(func, None)
             return self.render_function(func, [None, None, req, row_info])
-
-        def html_render_error(self, err, funstr):
-            import cgi
-            return {
-                'body':''.join([
-                '<html><body><h1>Render Error</h1>',
-                str(err),
-                '</p><h2>Stacktrace:</h2><code><pre>',
-                traceback.format_exc(),
-                '</pre></code><h2>Function source:</h2><code><pre>',
-                funstr])
-            }
 
     RenderOld = RenderOld()
 
@@ -684,6 +707,7 @@ def run(input=sys.stdin, output=sys.stdout):
                 'validate_doc_update': Validate.validate
             }
 
+        @debug_dump_args
         def ddoc(self, *_args):
             dispatch = self.dispatcher()
             args = list(_args)
@@ -778,7 +802,7 @@ def run(input=sys.stdin, output=sys.stdout):
                 retval = handlers[cmd[0]](*cmd[1:])
             except FatalError, err:
                 log.exception('FatalError occured %s: %s', *err.args)
-                log.critical('Critical error occured, exiting')
+                log.critical('That was a critical error, exiting')
                 respond(err.encode())
                 return 1
             except Forbidden, err:
@@ -793,7 +817,7 @@ def run(input=sys.stdin, output=sys.stdout):
                 err_msg = str(err)
                 respond(['error', err_name, err_msg])
                 log.exception('%s: %s', err_name, err_msg)
-                log.critical('Critical error occured, exiting')
+                log.critical('That was a critical error, exiting')
                 return 1
             else:
                 log.debug('Returning  %r', retval)
@@ -802,7 +826,7 @@ def run(input=sys.stdin, output=sys.stdout):
         return 0
     except Exception, err:
         log.exception('Unexpected error occured: %s', err)
-        log.critical('Critical error occured, exiting')
+        log.critical('That was a critical error, exiting')
         return 1
 
 
@@ -829,6 +853,7 @@ Options:
                           specified
   --couchdb-version=<ver> define with which version of couchdb server will work
                           default: latest one.
+                          e.g.: --couchdb-version=0.9.0
 
 Report bugs via the web at <http://code.google.com/p/couchdb-python>.
 """
