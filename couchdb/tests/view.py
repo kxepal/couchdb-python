@@ -74,6 +74,15 @@ def funcs():
             send(row['key'])
         return 'early'
 
+    def list_simple_old(head, row, req, info):
+        if head:
+            return {'headers': {'Content-Type': 'text/plain'},
+                    'code': 200,
+                    'body': 'foo'}
+        if row:
+            return row['value']
+        return 'tail'
+
     def list_chunky(head, req):
         send('first chunk')
         send(req['q'])
@@ -83,9 +92,6 @@ def funcs():
             i += 1
             if i > 2:
                 return 'early tail'
-
-    def list_old_style(head, row, req, info):
-        return 'stuff'
 
     #@CouchDBVersion.minimal(0, 9, 0)
     def list_with_headers(head, row, req, info):
@@ -106,6 +112,18 @@ def funcs():
         if row:
             return 'row value: ' + row['value']
         return 'tail ' + req['q']
+
+    def list_capped_old(head, row, req, info):
+        if head:
+            return {'headers': {'Content-Type': 'text/plain'},
+                    'code': 200,
+                    'body': 'bacon'}
+        i = 0
+        for row in get_row():
+            send(row['key'])
+            i += 1
+            if i > 2:
+                return 'early'
 
     def list_capped(head, req):
         send('bacon')
@@ -214,6 +232,12 @@ class ViewTestCase(QueryServerMixIn):
         self.qs.reset()
         resp = self.qs.run(['rereduce', [fun], range(10)])
         self.assertEqual(resp, [True, [45]])
+
+    def test_reduce_with_no_records(self):
+        ''' should not fail if map func yields no record. see bug #163 '''
+        fun = functions['reduce_values_sum']
+        self.qs.reset()
+        self.assertEquals(self.qs.run(['reduce', [fun], []]), [True, [0]])
 
     def test_learn_design_docs(self):
         ''' should learn design docs '''
@@ -452,6 +476,25 @@ class ListTestCase(QueryServerMixIn):
             self.qs.teach_ddoc(self.ddoc)
         setup()
 
+    @CouchDBVersion.minimal(0, 9, 0)
+    def test_list(self):
+        fun = functions['list_simple_old']
+        self.qs.reset()
+        self.qs.add_fun(fun)
+        self.qs.send(['list_begin', {'foo': 'bar'}, {'q': 'ok'}])
+        resp = self.qs.recv()
+        self.assertEqual(resp, {'headers': {'Content-Type': 'text/plain'},
+                               'code': 200, 'body': 'foo'})
+        resp = self.qs.run(['list_row', {'value': 'bar'}, {'q': 'ok'}])
+        self.assertEqual(resp, {'body': 'bar'})
+        resp = self.qs.run(['list_row', {'value': 'baz'}, {'q': 'ok'}])
+        self.assertEqual(resp, {'body': 'baz'})
+        resp = self.qs.run(['list_row', {'value': 'bam'}, {'q': 'ok'}])
+        self.assertEqual(resp, {'body': 'bam'})
+        resp = self.qs.run(['list_tail', {'q': 'ok'}])
+        self.assertEqual(resp, {'body': 'tail'})
+
+    @CouchDBVersion.minimal(0, 10, 0)
     def test_list(self):
         '''should run normal'''
 

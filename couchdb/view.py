@@ -335,7 +335,7 @@ def run(input=sys.stdin, output=sys.stdout):
         @debug_dump_args
         def reduce(self, reduce_funs, kvs, rereduce=False):
             reductions = []
-            keys, values = rereduce and (None, kvs) or zip(*kvs)
+            keys, values = rereduce and (None, kvs) or zip(*kvs) or ([],[])
             args = (keys, values, rereduce)
             for funstr in reduce_funs:
                 try:
