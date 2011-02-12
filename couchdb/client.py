@@ -411,6 +411,18 @@ class Database(object):
             doc['_rev'] = rev
         return id, rev
 
+    def cleanup(self):
+        """Clean up old design document indexes.
+
+        Remove all unused index files from the database storage area.
+
+        :return: a boolean to indicate successful cleanup initiation
+        :rtype: `bool`
+        """
+        headers = {'Content-Type': 'application/json'}
+        _, _, data = self.resource('_view_cleanup').post_json(headers=headers)
+        return data['ok']
+
     def commit(self):
         """If the server is configured to delay commits, or previous requests
         used the special ``X-Couch-Full-Commit: false`` header to disable
@@ -550,18 +562,25 @@ class Database(object):
                 return
             yield revision
 
-    def info(self):
-        """Return information about the database as a dictionary.
+    def info(self, ddoc=None):
+        """Return information about the database or design document as a
+        dictionary.
+
+        Without an argument, returns database information. With an argument,
+        return information for the given design document.
 
         The returned dictionary exactly corresponds to the JSON response to
-        a ``GET`` request on the database URI.
+        a ``GET`` request on the database or design document's info URI.
 
         :return: a dictionary of database properties
         :rtype: ``dict``
         :since: 0.4
         """
-        _, _, data = self.resource.get_json()
-        self._name = data['db_name']
+        if ddoc is not None:
+            _, _, data = self.resource('_design', ddoc, '_info').get_json()
+        else:
+            _, _, data = self.resource.get_json()
+            self._name = data['db_name']
         return data
 
     def delete_attachment(self, doc, filename):
@@ -749,6 +768,25 @@ class Database(object):
                 results.append((True, result['id'], result['rev']))
 
         return results
+
+    def purge(self, docs):
+        """Perform purging (complete removing) of the given documents.
+
+        Uses a single HTTP request to purge all given documents. Purged
+        documents do not leave any meta-data in the storage and are not
+        replicated.
+        """
+        content = {}
+        for doc in docs:
+            if isinstance(doc, dict):
+                content[doc['_id']] = [doc['_rev']]
+            elif hasattr(doc, 'items'):
+                doc = dict(doc.items())
+                content[doc['_id']] = [doc['_rev']]
+            else:
+                raise TypeError('expected dict, got %s' % type(doc))
+        _, _, data = self.resource.post_json('_purge', body=content)
+        return data
 
     def view(self, name, wrapper=None, **options):
         """Execute a predefined view.
@@ -1032,11 +1070,9 @@ class Row(dict):
     """Representation of a row as returned by database views."""
 
     def __repr__(self):
-        if self.id is None:
-            return '<%s key=%r, value=%r>' % (type(self).__name__, self.key,
-                                              self.value)
-        return '<%s id=%r, key=%r, value=%r>' % (type(self).__name__, self.id,
-                                                 self.key, self.value)
+        keys = 'id', 'key', 'error', 'value'
+        items = ['%s=%r' % (k, self[k]) for k in keys if k in self]
+        return '<%s %s>' % (type(self).__name__, ', '.join(items))
 
     @property
     def id(self):
@@ -1047,13 +1083,15 @@ class Row(dict):
 
     @property
     def key(self):
-        """The associated key."""
         return self['key']
 
     @property
     def value(self):
-        """The associated value."""
-        return self['value']
+        return self.get('value')
+
+    @property
+    def error(self):
+        return self.get('error')
 
     @property
     def doc(self):

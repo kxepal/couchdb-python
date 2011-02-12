@@ -21,7 +21,6 @@ from couchdb import client, http
 from couchdb.tests import testutil
 http.CACHE_SIZE = 2, 3
 
-
 class ServerTestCase(testutil.TempDatabaseMixin, unittest.TestCase):
 
     def test_init_with_resource(self):
@@ -471,8 +470,29 @@ class DatabaseTestCase(testutil.TempDatabaseMixin, unittest.TestCase):
         for change in self.db.changes(feed='continuous', heartbeat=100):
             break
 
+    def test_purge(self):
+        doc = {'a': 'b'}
+        self.db['foo'] = doc
+        self.assertEqual(self.db.purge([doc])['purge_seq'], 1)
+
 
 class ViewTestCase(testutil.TempDatabaseMixin, unittest.TestCase):
+
+    def test_row_object(self):
+
+        row = list(self.db.view('_all_docs', keys=['blah']))[0]
+        self.assertEqual(repr(row), "<Row key='blah', error='not_found'>")
+        self.assertEqual(row.id, None)
+        self.assertEqual(row.key, 'blah')
+        self.assertEqual(row.value, None)
+        self.assertEqual(row.error, 'not_found')
+
+        self.db.save({'_id': 'xyz', 'foo': 'bar'})
+        row = list(self.db.view('_all_docs', keys=['xyz']))[0]
+        self.assertEqual(row.id, 'xyz')
+        self.assertEqual(row.key, 'xyz')
+        self.assertEqual(row.value.keys(), ['rev'])
+        self.assertEqual(row.error, None)
 
     def test_view_multi_get(self):
         for i in range(1, 6):
@@ -489,6 +509,16 @@ class ViewTestCase(testutil.TempDatabaseMixin, unittest.TestCase):
         for idx, i in enumerate(range(1, 6, 2)):
             self.assertEqual(i, res[idx].key)
 
+    def test_ddoc_info(self):
+        self.db['_design/test'] = {
+            'language': 'javascript',
+            'views': {
+                'test': {'map': 'function(doc) { emit(doc.type, null); }'}
+            }
+        }
+        info = self.db.info('test')
+        self.assertEqual(info['view_index']['compact_running'], False)
+
     def test_view_compaction(self):
         for i in range(1, 6):
             self.db.save({'i': i})
@@ -501,6 +531,27 @@ class ViewTestCase(testutil.TempDatabaseMixin, unittest.TestCase):
 
         self.db.view('test/multi_key')
         self.assertTrue(self.db.compact('test'))
+
+    def test_view_cleanup(self):
+
+        for i in range(1, 6):
+            self.db.save({'i': i})
+
+        self.db['_design/test'] = {
+            'language': 'javascript',
+            'views': {
+                'multi_key': {'map': 'function(doc) { emit(doc.i, null); }'}
+            }
+        }
+        self.db.view('test/multi_key')
+
+        ddoc = self.db['_design/test']
+        ddoc['views'] = {
+            'ids': {'map': 'function(doc) { emit(doc._id, null); }'}
+        }
+        self.db.update([ddoc])
+        self.db.view('test/ids')
+        self.assertTrue(self.db.cleanup())
 
     def test_view_function_objects(self):
         if 'python' not in self.server.config()['query_servers']:
