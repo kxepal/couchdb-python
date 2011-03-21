@@ -5,18 +5,21 @@
 #
 # This software is licensed as described in the file COPYING, which
 # you should have received as part of this distribution.
-import sys
 import doctest
-import unittest
-from couchdb import view
-from couchdb.util import CouchDBVersion
-from couchdb.tests.testutil import QueryServer
-from StringIO import StringIO
 import inspect
+import sys
 import textwrap
-
+import unittest
+from StringIO import StringIO
 from os.path import normpath, join, dirname
+
+from couchdb import view
+from testutil import QueryServer
+
 VIEW_SERVER = normpath(join(dirname(__file__), '../view.py'))
+
+TRUNK = (999, 999, 999) # assume latest one
+COUCHDB_VERSION = TRUNK
 
 def funcs():
     def emit_twise(doc):
@@ -93,7 +96,6 @@ def funcs():
             if i > 2:
                 return 'early tail'
 
-    #@CouchDBVersion.minimal(0, 9, 0)
     def list_with_headers(head, row, req, info):
         if head:
             return {'headers': {'Content-Type': 'text/plain'},
@@ -103,7 +105,6 @@ def funcs():
             return 'some "text" here'
         return 'tail'
 
-    #@CouchDBVersion.minimal(0, 9, 0)
     def list_with_rows(head, row, req, info):
         if head:
             return {'headers': {'Content-Type': 'text/plain'},
@@ -162,6 +163,7 @@ def funcs():
     for k, f in d.items():
         d[k] = textwrap.dedent(inspect.getsource(f))
     return d
+
 functions = funcs()
 
 
@@ -178,7 +180,7 @@ def make_ddoc(fun_path, fun_str):
 
 class QueryServerMixIn(unittest.TestCase):
     def setUp(self):
-        self.qs = QueryServer(VIEW_SERVER, version=CouchDBVersion.current)
+        self.qs = QueryServer(VIEW_SERVER, version=COUCHDB_VERSION)
 
     def tearDown(self):
         self.qs.close()
@@ -193,12 +195,9 @@ class ViewTestCase(QueryServerMixIn):
     def test_reset_should_not_erase_ddocs(self):
         ''' should not erase ddocs on reset '''
 
-        @CouchDBVersion.minimal(0, 9, 0)
-        def test():
+        if COUCHDB_VERSION < (0, 11, 0):
             ''' ddocs had been introduced in 0.11.0 '''
-
-        @CouchDBVersion.minimal(0, 11, 0)
-        def test():
+        elif COUCHDB_VERSION >= (0, 11, 0):
             fun = functions['show_simple']
             ddoc = make_ddoc(['shows', 'simple'], fun)
             self.qs.teach_ddoc(ddoc)
@@ -207,7 +206,6 @@ class ViewTestCase(QueryServerMixIn):
                               [{'title': 'best ever', 'body': 'doc body'}, {}])
             resp = self.qs.recv()
             self.assertEqual(resp, ['resp', {'body': 'best ever - doc body'}])
-        test()
 
     def test_run_map_funs(self):
         ''' should run map funs '''
@@ -241,126 +239,111 @@ class ViewTestCase(QueryServerMixIn):
 
     def test_learn_design_docs(self):
         ''' should learn design docs '''
-        @CouchDBVersion.minimal(0, 9, 0)
-        def test():
-            # ddocs had been introduced in 0.11.0
-            pass
 
-        @CouchDBVersion.minimal(0, 11, 0)
-        def test():
+        if COUCHDB_VERSION < (0, 11, 0):
+            ''' ddocs had been introduced in 0.11.0 '''
+        else:
             ddoc = {'_id': 'foo'}
             self.qs.reset()
             self.assertEqual(self.qs.teach_ddoc(ddoc), True)
-        test()
 
 class ValidateTestCase(QueryServerMixIn):
 
     def setUp(self):
         super(ValidateTestCase, self).setUp()
-        @CouchDBVersion.minimal(0, 9, 0)
-        def setup():
+        if (0, 9, 0) <= COUCHDB_VERSION < (0, 11, 0):
             self.qs.reset()
-
-        @CouchDBVersion.minimal(0, 11, 0)
-        def setup():
+        elif COUCHDB_VERSION >= (0, 11, 0):
             fun = functions['validate_forbidden']
             self.ddoc = make_ddoc(['validate_doc_update'], fun)
             self.qs.teach_ddoc(self.ddoc)
-        setup()
-
+        else:
+            self.fail('Undefined test case for version %s'
+                      % '.'.join(map(str, COUCHDB_VERSION)))
 
     def test_validate_all_good_updates(self):
         ''' should allow good updates '''
-        @CouchDBVersion.minimal(0, 9, 0)
-        def test():
+
+        if (0, 9, 0) <= COUCHDB_VERSION < (0, 11, 0):
             fun = functions['validate_forbidden']
             self.qs.send(['validate', fun, {'good': True}, {}, {}])
-
-        @CouchDBVersion.minimal(0, 11, 0)
-        def test():
+        elif COUCHDB_VERSION >= (0, 11, 0):
             self.qs.send_ddoc(self.ddoc, ['validate_doc_update'],
                                          [{'good': True}, {}, {}])
-        test()
+        else:
+            self.fail('Undefined test case for version %s'
+                      % '.'.join(map(str, COUCHDB_VERSION)))
         resp = self.qs.recv()
         self.assertEqual(resp, 1)
 
     def test_validate_reject_invalid_updates(self):
         ''' should reject invalid updates '''
-        @CouchDBVersion.minimal(0, 9, 0)
-        def test():
+        if (0, 9, 0) <= COUCHDB_VERSION < (0, 11, 0):
             fun = functions['validate_forbidden']
             self.qs.send(['validate', fun, {'bad': True}, {}, {}])
-
-        @CouchDBVersion.minimal(0, 11, 0)
-        def test():
+        elif COUCHDB_VERSION >= (0, 11, 0):
             self.qs.send_ddoc(self.ddoc, ['validate_doc_update'],
                                          [{'bad': True}, {}, {}])
-        test()
+        else:
+            self.fail('Undefined test case for version %s'
+                      % '.'.join(map(str, COUCHDB_VERSION)))
         resp = self.qs.recv()
         self.assertEqual(resp, {'forbidden': 'bad doc'})
 
 class ShowTestCase(QueryServerMixIn):
 
-    @CouchDBVersion.minimal(0, 9, 0)
     def test_show(self):
         ''' should show '''
-        fun = functions['show_simple']
-        self.qs.send(['show_doc', fun,
-                     {'title': 'best ever', 'body': 'doc body'}])
-        resp = self.qs.recv()
-        self.assertEqual(resp, {'body': 'best ever - doc body'})
+        if (0, 9, 0) <= COUCHDB_VERSION < (0, 10, 0):
+            fun = functions['show_simple']
+            self.qs.send(['show_doc', fun,
+                         {'title': 'best ever', 'body': 'doc body'}])
+            resp = self.qs.recv()
+            self.assertEqual(resp, {'body': 'best ever - doc body'})
+        elif COUCHDB_VERSION >= (0, 10, 0):
+            fun = functions['show_simple']
+            if COUCHDB_VERSION < (0, 11, 0):
+                self.qs.send(['show', fun,
+                             {'title': 'best ever', 'body': 'doc body'}, {}])
+            elif COUCHDB_VERSION >= (0, 11, 0):
+                ddoc = make_ddoc(['shows', 'simple'], fun)
+                self.qs.teach_ddoc(ddoc)
+                self.qs.send_ddoc(ddoc, ['shows', 'simple'],
+                                  [{'title': 'best ever', 'body': 'doc body'}, {}])
+            resp = self.qs.recv()
+            self.assertEqual(resp, ['resp', {'body': 'best ever - doc body'}])
+        else:
+            self.fail('Undefined test case for version %s'
+                      % '.'.join(map(str, COUCHDB_VERSION)))
 
-    @CouchDBVersion.minimal(0, 10, 0)
-    def test_show(self):
-        ''' should show '''
-
-        fun = functions['show_simple']
-        @CouchDBVersion.minimal(0, 10, 0)
-        def test():
-            self.qs.send(['show', fun,
-                         {'title': 'best ever', 'body': 'doc body'}, {}])
-
-        @CouchDBVersion.minimal(0, 11, 0)
-        def test():
-            ddoc = make_ddoc(['shows', 'simple'], fun)
-            self.qs.teach_ddoc(ddoc)
-            self.qs.send_ddoc(ddoc, ['shows', 'simple'],
-                              [{'title': 'best ever', 'body': 'doc body'}, {}])
-        test()
-        resp = self.qs.recv()
-        self.assertEqual(resp, ['resp', {'body': 'best ever - doc body'}])
-
-    @CouchDBVersion.minimal(0, 9, 0)
     def test_show_with_headers(self):
         ''' should show headers '''
-        fun = functions['show_headers']
-        self.qs.send(['show_doc', fun,
-                     {'title': 'best ever', 'body': 'doc body'}])
-        resp = self.qs.recv()
-        self.assertEqual(resp, {'headers': {'X-Couchdb-Python': 'Hello, world!'},
-                        'code': 200,
-                        'body': 'best ever - doc body'})
+        if (0, 9, 0) <= COUCHDB_VERSION < (0, 10, 0):
+            fun = functions['show_headers']
+            self.qs.send(['show_doc', fun,
+                         {'title': 'best ever', 'body': 'doc body'}])
+            resp = self.qs.recv()
+            self.assertEqual(resp, {'headers': {'X-Couchdb-Python': 'Hello, world!'},
+                            'code': 200,
+                            'body': 'best ever - doc body'})
+        elif COUCHDB_VERSION >= (0, 10, 0):
+            fun = functions['show_headers']
+            if COUCHDB_VERSION < (0, 11, 0):
+                self.qs.send(['show', fun,
+                             {'title': 'best ever', 'body': 'doc body'}, {}])
 
-    @CouchDBVersion.minimal(0, 10, 0)
-    def test_show_with_headers(self):
-        ''' should show headers '''
-        fun = functions['show_headers']
-        @CouchDBVersion.minimal(0, 10, 0)
-        def test():
-            self.qs.send(['show', fun,
-                         {'title': 'best ever', 'body': 'doc body'}, {}])
-
-        @CouchDBVersion.minimal(0, 11, 0)
-        def test():
-            ddoc = make_ddoc(['shows', 'headers'], fun)
-            self.qs.teach_ddoc(ddoc)
-            self.qs.send_ddoc(ddoc, ['shows', 'headers'],
-                              [{'title': 'best ever', 'body': 'doc body'}, {}])
-        test()
-        resp = self.qs.recv()
-        self.assertEqual(resp, ['resp',
+            elif COUCHDB_VERSION >= (0, 11, 0):
+                ddoc = make_ddoc(['shows', 'headers'], fun)
+                self.qs.teach_ddoc(ddoc)
+                self.qs.send_ddoc(ddoc, ['shows', 'headers'],
+                                  [{'title': 'best ever', 'body': 'doc body'}, {}])
+            resp = self.qs.recv()
+            self.assertEqual(resp, ['resp',
                 {'code': 200, 'headers': {'X-Couchdb-Python': 'Hello, world!'},
                  'body': 'best ever - doc body'}])
+        else:
+            self.fail('Undefined test case for version %s'
+                      % '.'.join(map(str, COUCHDB_VERSION)))
 
 class ErrorTestCase(QueryServerMixIn):
 
@@ -368,21 +351,18 @@ class ErrorTestCase(QueryServerMixIn):
         ''' should not exit '''
         fun = functions['error']
 
-        @CouchDBVersion.minimal(0, 9, 0)
-        def test():
+        if (0, 9, 0) <= COUCHDB_VERSION < (0, 10, 0):
             self.qs.send(['show_doc', fun, {'foo': 'bar'}, {'q': 'ok'}])
-
-        @CouchDBVersion.minimal(0, 10, 0)
-        def test():
+        elif (0, 10, 0) <= COUCHDB_VERSION < (0, 11, 0):
             self.qs.send(['show', fun, {'foo': 'bar'}, {'q': 'ok'}])
-
-        @CouchDBVersion.minimal(0, 11, 0)
-        def test():
+        elif (0, 11, 0) <= COUCHDB_VERSION:
             ddoc = make_ddoc(['shows', 'error'], fun)
             self.qs.teach_ddoc(ddoc)
             self.qs.send_ddoc(ddoc, ['shows', 'error'],
                               [{'foo': 'bar'}, {'q': 'ok'}])
-        test()
+        else:
+            self.fail('Undefined test case for version %s'
+                      % '.'.join(map(str, COUCHDB_VERSION)))
         resp = self.qs.recv()
         self.assertEqual(resp, ['error', 'error_key', 'testing'])
         self.qs.run(['reset']) == True
@@ -390,79 +370,61 @@ class ErrorTestCase(QueryServerMixIn):
 
 class FilterTestCase(QueryServerMixIn):
 
-    @CouchDBVersion.minimal(0, 9, 0)
     def test_changes_filter(self):
         ''' should only return true for good docs '''
-        # filters are introduced in 0.10.0
-
-    @CouchDBVersion.minimal(0, 10, 0)
-    def test_changes_filter(self):
-        ''' should only return true for good docs '''
-        fun = functions['filter_basic']
-
-        @CouchDBVersion.minimal(0, 10, 0)
-        def test():
-            self.qs.reset()
-            self.assertEqual(self.qs.add_fun(fun), True)
-            self.qs.send(['filter', [{'key': 'bam', 'good': True},
-                         {'foo': 'bar'}, {'good': True}], {'req': 'foo'}])
-
-        @CouchDBVersion.minimal(0, 11, 0)
-        def test():
-            ddoc = make_ddoc(['filters', 'basic'], fun)
-            self.qs.teach_ddoc(ddoc)
-            self.qs.send_ddoc(ddoc, ['filters', 'basic'],
-                                    [[{'key': 'bam', 'good': True},
-                                    {'foo': 'bar'}, {'good': True}],
-                                    {'req': 'foo'}])
-        test()
-        resp = self.qs.recv()
-        self.assertEqual(resp, [True, [True, False, True]], resp)
-
+        if (0, 9, 0) <= COUCHDB_VERSION < (0, 10, 0):
+            ''' filters had been introduced in 0.10.0 '''
+        elif COUCHDB_VERSION >= (0, 10, 0):
+            fun = functions['filter_basic']
+            if COUCHDB_VERSION < (0, 11, 0):
+                self.qs.reset()
+                self.assertEqual(self.qs.add_fun(fun), True)
+                self.qs.send(['filter', [{'key': 'bam', 'good': True},
+                             {'foo': 'bar'}, {'good': True}], {'req': 'foo'}])
+            elif COUCHDB_VERSION >= (0, 11, 0):
+                ddoc = make_ddoc(['filters', 'basic'], fun)
+                self.qs.teach_ddoc(ddoc)
+                self.qs.send_ddoc(ddoc, ['filters', 'basic'],
+                                        [[{'key': 'bam', 'good': True},
+                                        {'foo': 'bar'}, {'good': True}],
+                                        {'req': 'foo'}])
+            resp = self.qs.recv()
+            self.assertEqual(resp, [True, [True, False, True]])
+        else:
+            self.fail('Undefined test case for version %s'
+                      % '.'.join(map(str, COUCHDB_VERSION)))
 
 class UpdateTestCase(QueryServerMixIn):
 
-    @CouchDBVersion.minimal(0, 9, 0)
-    def test_update(self):
-        # updates had been introduced in 0.10.0
-        pass
-
-    @CouchDBVersion.minimal(0, 10, 0)
     def test_update(self):
         ''' should return a doc and a resp body '''
-        fun = functions['update_basic']
+        if (0, 9, 0) <= COUCHDB_VERSION < (0, 10, 0):
+            ''' updates had been introduced in 0.10.0 '''
+        elif COUCHDB_VERSION >= (0, 10, 0):
+            fun = functions['update_basic']
+            if COUCHDB_VERSION < (0, 11, 0):
+                self.qs.reset()
+                self.qs.send(['update', fun,
+                              {'foo': 'gnarly'}, {'method': 'POST'}])
+            elif COUCHDB_VERSION >= (0, 11, 0):
+                ddoc = make_ddoc(['updates', 'basic'], fun)
+                self.qs.teach_ddoc(ddoc)
+                self.qs.send_ddoc(ddoc, ['updates', 'basic'],
+                                        [{'foo': 'gnarly'}, {'method': 'POST'}])
 
-        @CouchDBVersion.minimal(0, 10, 0)
-        def test():
-            self.qs.reset()
-            self.qs.send(['update', fun,
-                         {'foo': 'gnarly'}, {'method': 'POST'}])
-
-        @CouchDBVersion.minimal(0, 11, 0)
-        def test():
-            ddoc = make_ddoc(['updates', 'basic'], fun)
-            self.qs.teach_ddoc(ddoc)
-            self.qs.send_ddoc(ddoc,
-                              ['updates', 'basic'],
-                              [{'foo': 'gnarly'}, {'method': 'POST'}])
-
-        test()
-        up, doc, resp = self.qs.recv()
-        self.assertEqual(up, 'up')
-        self.assertEqual(doc, {'foo': 'gnarly', 'world': 'hello'})
-        self.assertEqual(resp['body'], 'hello, doc')
+            up, doc, resp = self.qs.recv()
+            self.assertEqual(up, 'up')
+            self.assertEqual(doc, {'foo': 'gnarly', 'world': 'hello'})
+            self.assertEqual(resp['body'], 'hello, doc')
+        else:
+            self.fail('Undefined test case for version %s'
+                      % '.'.join(map(str, COUCHDB_VERSION)))
 
 class ListTestCase(QueryServerMixIn):
 
     def setUp(self):
         super(ListTestCase, self).setUp()
-
-        @CouchDBVersion.minimal(0, 9, 0)
-        def setup():
-            pass
-
-        @CouchDBVersion.minimal(0, 11, 0)
-        def setup():
+        if COUCHDB_VERSION >= (0, 11, 0):
             self.ddoc = {
                 '_id': 'foo',
                 'lists':{
@@ -474,157 +436,143 @@ class ListTestCase(QueryServerMixIn):
                 }
             }
             self.qs.teach_ddoc(self.ddoc)
-        setup()
 
-    @CouchDBVersion.minimal(0, 9, 0)
     def test_list(self):
-        fun = functions['list_simple_old']
-        self.qs.reset()
-        self.qs.add_fun(fun)
-        self.qs.send(['list_begin', {'foo': 'bar'}, {'q': 'ok'}])
-        resp = self.qs.recv()
-        self.assertEqual(resp, {'headers': {'Content-Type': 'text/plain'},
-                               'code': 200, 'body': 'foo'})
-        resp = self.qs.run(['list_row', {'value': 'bar'}, {'q': 'ok'}])
-        self.assertEqual(resp, {'body': 'bar'})
-        resp = self.qs.run(['list_row', {'value': 'baz'}, {'q': 'ok'}])
-        self.assertEqual(resp, {'body': 'baz'})
-        resp = self.qs.run(['list_row', {'value': 'bam'}, {'q': 'ok'}])
-        self.assertEqual(resp, {'body': 'bam'})
-        resp = self.qs.run(['list_tail', {'q': 'ok'}])
-        self.assertEqual(resp, {'body': 'tail'})
+        ''' should run normal '''
 
-    @CouchDBVersion.minimal(0, 10, 0)
-    def test_list(self):
-        '''should run normal'''
-
-        @CouchDBVersion.minimal(0, 10, 0)
-        def test():
-            fun = functions['list_simple']
+        if (0, 9, 0) <= COUCHDB_VERSION < (0, 10, 0):
+            fun = functions['list_simple_old']
             self.qs.reset()
             self.qs.add_fun(fun)
-            self.qs.send(['list', {'foo': 'bar'}, {'q': 'ok'}])
+            self.qs.send(['list_begin', {'foo': 'bar'}, {'q': 'ok'}])
+            resp = self.qs.recv()
+            self.assertEqual(resp, {'headers': {'Content-Type': 'text/plain'},
+                                   'code': 200, 'body': 'foo'})
+            resp = self.qs.run(['list_row', {'value': 'bar'}, {'q': 'ok'}])
+            self.assertEqual(resp, {'body': 'bar'})
+            resp = self.qs.run(['list_row', {'value': 'baz'}, {'q': 'ok'}])
+            self.assertEqual(resp, {'body': 'baz'})
+            resp = self.qs.run(['list_row', {'value': 'bam'}, {'q': 'ok'}])
+            self.assertEqual(resp, {'body': 'bam'})
+            resp = self.qs.run(['list_tail', {'q': 'ok'}])
+            self.assertEqual(resp, {'body': 'tail'})
 
-        @CouchDBVersion.minimal(0, 11, 0)
-        def test():
-            self.qs.send_ddoc(self.ddoc,
-                              ['lists', 'simple'],
-                              [{'foo': 'bar'}, {'q': 'ok'}])
-        test()
-        resp = self.qs.recv()
-        self.assertEqual(resp, ['start', ['first chunk', 'ok'], {'headers': {}}])
-        resp = self.qs.run(['list_row', {'key': 'baz'}])
-        self.assertEqual(resp, ['chunks', ['baz']])
-        resp = self.qs.run(['list_row', {'key': 'bam'}])
-        self.assertEqual(resp, ['chunks', ['bam']])
-        resp = self.qs.run(['list_row', {'key': 'foom'}])
-        self.assertEqual(resp, ['chunks', ['foom']])
-        resp = self.qs.run(['list_row', {'key': 'fooz'}])
-        self.assertEqual(resp, ['chunks', ['fooz']])
-        resp = self.qs.run(['list_row', {'key': 'foox'}])
-        self.assertEqual(resp, ['chunks', ['foox']])
-        resp = self.qs.run(['list_end'])
-        self.assertEqual(resp, ['end', ['early']])
+        elif COUCHDB_VERSION >= (0, 10, 0):
+            if COUCHDB_VERSION < (0, 11, 0):
+                fun = functions['list_simple']
+                self.qs.reset()
+                self.qs.add_fun(fun)
+                self.qs.send(['list', {'foo': 'bar'}, {'q': 'ok'}])
+            else:
+                self.qs.send_ddoc(self.ddoc, ['lists', 'simple'],
+                                             [{'foo': 'bar'}, {'q': 'ok'}])
+            resp = self.qs.recv()
+            self.assertEqual(resp, ['start', ['first chunk', 'ok'], {'headers': {}}])
+            resp = self.qs.run(['list_row', {'key': 'baz'}])
+            self.assertEqual(resp, ['chunks', ['baz']])
+            resp = self.qs.run(['list_row', {'key': 'bam'}])
+            self.assertEqual(resp, ['chunks', ['bam']])
+            resp = self.qs.run(['list_row', {'key': 'foom'}])
+            self.assertEqual(resp, ['chunks', ['foom']])
+            resp = self.qs.run(['list_row', {'key': 'fooz'}])
+            self.assertEqual(resp, ['chunks', ['fooz']])
+            resp = self.qs.run(['list_row', {'key': 'foox'}])
+            self.assertEqual(resp, ['chunks', ['foox']])
+            resp = self.qs.run(['list_end'])
+            self.assertEqual(resp, ['end', ['early']])
+        else:
+            self.fail('Undefined test case for version %s'
+                      % '.'.join(map(str, COUCHDB_VERSION)))
 
-    @CouchDBVersion.minimal(0, 9, 0)
     def test_headers(self):
         '''  should send head, row and tail '''
-        fun = functions['list_with_headers']
-        self.qs.reset()
-        self.qs.add_fun(fun)
-        self.qs.send(['list_begin', {'total_rows': 100500}, {'q': 'ok'}])
-        resp = self.qs.recv()
-        self.assertEqual(resp, {'headers': {'Content-Type': 'text/plain'},
-                               'code': 200, 'body': 'foo'})
-        resp = self.qs.run(['list_row', {'foo': 'bar'}, {'q': 'ok'}])
-        self.assertEqual(resp, {'body': 'some "text" here'})
-        resp = self.qs.run(['list_tail', {'q': 'ok'}])
-        self.assertEqual(resp, {'body': 'tail'})
 
-
-    @CouchDBVersion.minimal(0, 10, 0)
-    def test_headers(self):
-        ''' should do headers proper '''
-        @CouchDBVersion.minimal(0, 10, 0)
-        def test():
-            fun = functions['show_sends']
+        if (0, 9, 0) <= COUCHDB_VERSION < (0, 10, 0):
+            fun = functions['list_with_headers']
             self.qs.reset()
             self.qs.add_fun(fun)
-            self.qs.send(['list', {'total_rows': 100500}, {'q': 'ok'}])
+            self.qs.send(['list_begin', {'total_rows': 100500}, {'q': 'ok'}])
+            resp = self.qs.recv()
+            self.assertEqual(resp, {'headers': {'Content-Type': 'text/plain'},
+                                   'code': 200, 'body': 'foo'})
+            resp = self.qs.run(['list_row', {'foo': 'bar'}, {'q': 'ok'}])
+            self.assertEqual(resp, {'body': 'some "text" here'})
+            resp = self.qs.run(['list_tail', {'q': 'ok'}])
+            self.assertEqual(resp, {'body': 'tail'})
+        elif COUCHDB_VERSION >= (0, 10, 0):
+            if COUCHDB_VERSION < (0, 11, 0):
+                fun = functions['show_sends']
+                self.qs.reset()
+                self.qs.add_fun(fun)
+                self.qs.send(['list', {'total_rows': 100500}, {'q': 'ok'}])
+            else:
+                self.qs.send_ddoc(self.ddoc,
+                                  ['lists', 'headers'],
+                                  [{'total_rows': 100500}, {'q': 'ok'}])
+            resp = self.qs.recv()
+            self.assertEqual(resp, ['start', ['first chunk', 'second "chunk"'],
+                             {'headers': {'Content-Type': 'text/plain'}}])
+            resp = self.qs.run(['list_end'])
+            self.assertEqual(resp, ['end', ['tail']])
+        else:
+            self.fail('Undefined test case for version %s'
+                      % '.'.join(map(str, COUCHDB_VERSION)))
 
-        @CouchDBVersion.minimal(0, 11, 0)
-        def test():
-            self.qs.send_ddoc(self.ddoc,
-                              ['lists', 'headers'],
-                              [{'total_rows': 100500}, {'q': 'ok'}])
-        test()
-        resp = self.qs.recv()
-        self.assertEqual(resp, ['start', ['first chunk', 'second "chunk"'],
-                         {'headers': {'Content-Type': 'text/plain'}}])
-        resp = self.qs.run(['list_end'])
-        self.assertEqual(resp, ['end', ['tail']])
-
-    @CouchDBVersion.minimal(0, 9, 0)
     def test_with_rows(self):
         '''  should render rows '''
-        fun = functions['list_with_rows']
-        self.qs.reset()
-        self.qs.add_fun(fun)
-        self.qs.send(['list_begin', {'total_rows': 100500}, {'q': 'ok'}])
-        resp = self.qs.recv()
-        self.assertEqual(resp, {'headers': {'Content-Type': 'text/plain'},
-                               'code': 200, 'body': 'foo'})
-        resp = self.qs.run(['list_row', {'value': 'bar'}, {'q': 'ok'}])
-        self.assertEqual(resp, {'body': 'row value: bar'})
-        resp = self.qs.run(['list_row', {'value': 'baz'}, {'q': 'ok'}])
-        self.assertEqual(resp, {'body': 'row value: baz'})
-        resp = self.qs.run(['list_row', {'value': 'bam'}, {'q': 'ok'}])
-        self.assertEqual(resp, {'body': 'row value: bam'})
-        resp = self.qs.run(['list_tail', {'q': 'ok'}])
-        self.assertEqual(resp, {'body': 'tail ok'})
-
-    @CouchDBVersion.minimal(0, 10, 0)
-    def test_with_rows(self):
-        ''' should list em '''
-        @CouchDBVersion.minimal(0, 10, 0)
-        def test():
-            fun = functions['show_while_get_rows']
+        if (0, 9, 0) <= COUCHDB_VERSION < (0, 10, 0):
+            fun = functions['list_with_rows']
             self.qs.reset()
             self.qs.add_fun(fun)
-            self.qs.send(['list', {'foo': 'bar'}, {'q': 'ok'}])
+            self.qs.send(['list_begin', {'total_rows': 100500}, {'q': 'ok'}])
+            resp = self.qs.recv()
+            self.assertEqual(resp, {'headers': {'Content-Type': 'text/plain'},
+                                   'code': 200, 'body': 'foo'})
+            resp = self.qs.run(['list_row', {'value': 'bar'}, {'q': 'ok'}])
+            self.assertEqual(resp, {'body': 'row value: bar'})
+            resp = self.qs.run(['list_row', {'value': 'baz'}, {'q': 'ok'}])
+            self.assertEqual(resp, {'body': 'row value: baz'})
+            resp = self.qs.run(['list_row', {'value': 'bam'}, {'q': 'ok'}])
+            self.assertEqual(resp, {'body': 'row value: bam'})
+            resp = self.qs.run(['list_tail', {'q': 'ok'}])
+            self.assertEqual(resp, {'body': 'tail ok'})
 
-        @CouchDBVersion.minimal(0, 11, 0)
-        def test():
-            self.qs.send_ddoc(self.ddoc,
-                              ['lists', 'rows'],
-                              [{'foo': 'bar'}, {'q': 'ok'}])
-        test()
-        resp = self.qs.recv()
-        self.assertEqual(resp, ['start', ['first chunk', 'ok'], {'headers': {}}])
-        resp = self.qs.run(['list_row', {'key': 'baz'}])
-        self.assertEqual(resp, ['chunks', ['baz']])
-        resp = self.qs.run(['list_row', {'key': 'bam'}])
-        self.assertEqual(resp, ['chunks', ['bam']])
-        resp = self.qs.run(['list_end'])
-        self.assertEqual(resp, ['end', ['tail']])
-
+        elif COUCHDB_VERSION >= (0, 10, 0):
+            if COUCHDB_VERSION < (0, 11, 0):
+                fun = functions['show_while_get_rows']
+                self.qs.reset()
+                self.qs.add_fun(fun)
+                self.qs.send(['list', {'foo': 'bar'}, {'q': 'ok'}])
+            else:
+                self.qs.send_ddoc(self.ddoc,
+                                  ['lists', 'rows'],
+                                  [{'foo': 'bar'}, {'q': 'ok'}])
+            resp = self.qs.recv()
+            self.assertEqual(resp, ['start', ['first chunk', 'ok'], {'headers': {}}])
+            resp = self.qs.run(['list_row', {'key': 'baz'}])
+            self.assertEqual(resp, ['chunks', ['baz']])
+            resp = self.qs.run(['list_row', {'key': 'bam'}])
+            self.assertEqual(resp, ['chunks', ['bam']])
+            resp = self.qs.run(['list_end'])
+            self.assertEqual(resp, ['end', ['tail']])
+        else:
+            self.fail('Undefined test case for version %s'
+                      % '.'.join(map(str, COUCHDB_VERSION)))
 
     def test_buffer_multiple_chunks_should_buffer_em(self):
         ''' should buffer em '''
-        @CouchDBVersion.minimal(0, 10, 0)
-        def test():
+        if (0, 10, 0) > COUCHDB_VERSION:
+            self.fail('Undefined test case for version %s'
+                      % '.'.join(map(str, COUCHDB_VERSION)))
+        if (0, 10, 0) <= COUCHDB_VERSION < (0, 11, 0):
             fun = functions['show_while_get_rows_multi_send']
             self.qs.reset()
             self.qs.add_fun(fun)
             self.qs.send(['list', {'foo': 'bar'}, {'q': 'ok'}])
-
-        @CouchDBVersion.minimal(0, 11, 0)
-        def test():
-         self.qs.send_ddoc(self.ddoc,
+        elif COUCHDB_VERSION >= (0, 11, 0):
+            self.qs.send_ddoc(self.ddoc,
                                 ['lists', 'buffer_chunks'],
                                 [{'foo': 'bar'}, {'q': 'ok'}])
-
-        test()
         resp = self.qs.recv()
         self.assertEqual(resp, ['start', ['bacon'], {'headers': {}}])
         resp = self.qs.run(['list_row', {'key': 'baz'}])
@@ -636,19 +584,18 @@ class ListTestCase(QueryServerMixIn):
 
     def test_end_after_two(self):
         ''' should end after 2 '''
-        @CouchDBVersion.minimal(0, 10, 0)
-        def test():
+        if (0, 10, 0) <= COUCHDB_VERSION < (0, 11, 0):
             fun = functions['list_chunky']
             self.qs.reset()
             self.qs.add_fun(fun)
             self.qs.send(['list', {'foo': 'bar'}, {'q': 'ok'}])
-
-        @CouchDBVersion.minimal(0, 11, 0)
-        def test():
+        elif COUCHDB_VERSION >= (0, 11, 0):
             self.qs.send_ddoc(self.ddoc,
                                     ['lists', 'chunky'],
                                     [{'foo': 'bar'}, {'q': 'ok'}])
-        test()
+        else:
+            self.fail('Undefined test case for version %s'
+                      % '.'.join(map(str, COUCHDB_VERSION)))
         resp = self.qs.recv()
         self.assertEqual(resp, ['start', ['first chunk', 'ok'], {'headers': {}}])
         resp = self.qs.run(['list_row', {'key': 'baz'}])
@@ -662,15 +609,9 @@ class ListTestCase(QueryServerMixIn):
 
 class CrushTestCase(QueryServerMixIn):
 
-
     def setUp(self):
         super(CrushTestCase, self).setUp()
-        @CouchDBVersion.minimal(0, 9, 0)
-        def setup():
-            pass
-
-        @CouchDBVersion.minimal(0, 11, 0)
-        def setup():
+        if COUCHDB_VERSION >= (0, 11, 0):
             self.ddoc = {
                 '_id': 'foo',
                 'lists': {
@@ -682,38 +623,21 @@ class CrushTestCase(QueryServerMixIn):
                 }
             }
             self.qs.teach_ddoc(self.ddoc)
-        setup()
 
-
-    @CouchDBVersion.minimal(0, 10, 0)
     def test_exit_if_sends_too_many_rows(self):
         ''' should exit if erlang sends too many rows '''
-        @CouchDBVersion.minimal(0, 10, 0)
-        def test():
+        if (0, 10, 0) <= COUCHDB_VERSION < (0, 11, 0):
             fun = functions['list_capped']
             self.qs.reset()
             self.qs.add_fun(fun)
             self.qs.send(['list', {'foo': 'bar'}, {'q': 'ok'}])
-
-        @CouchDBVersion.minimal(0, 10, 0)
-        def handle_error():
-            resp = self.qs.run(['list_row', {'key': 'foox'}])
-            self.assertEqual(resp, {'error': 'unknown_command',
-                                    'reason': 'unknown command list_row'})
-
-        @CouchDBVersion.minimal(0, 11, 0)
-        def test():
+        elif COUCHDB_VERSION >= (0, 11, 0):
             self.qs.send_ddoc(self.ddoc,
                               ['lists', 'capped'],
                               [{'foo': 'bar'}, {'q': 'ok'}])
-
-        @CouchDBVersion.minimal(0, 11, 0)
-        def handle_error():
-            resp = self.qs.run(['list_row', {'key': 'foox'}])
-            self.assertEqual(resp, ['error',
-                                    'unknown_command',
-                                    'unknown command list_row'])
-        test()
+        else:
+            self.fail('Undefined test case for version %s'
+                      % '.'.join(map(str, COUCHDB_VERSION)))
         resp = self.qs.recv()
         self.assertEqual(resp, ['start', ['bacon'], {'headers': {}}])
         resp = self.qs.run(['list_row', {'key': 'baz'}])
@@ -722,72 +646,63 @@ class CrushTestCase(QueryServerMixIn):
         self.assertEqual(resp, ['chunks', ['foom']])
         resp = self.qs.run(['list_row', {'key': 'fooz'}])
         self.assertEqual(resp, ['end', ['fooz', 'early']])
-        handle_error()
+        if (0, 10, 0) <= COUCHDB_VERSION < (0, 11, 0):
+            resp = self.qs.run(['list_row', {'key': 'foox'}])
+            self.assertEqual(resp, {'error': 'unknown_command',
+                                    'reason': 'unknown command list_row'})
+        elif COUCHDB_VERSION >= (0, 11, 0):
+            resp = self.qs.run(['list_row', {'key': 'foox'}])
+            self.assertEqual(resp, ['error',
+                                    'unknown_command',
+                                    'unknown command list_row'])
         self.qs.pipe.wait()
         self.assertEqual(self.qs.pipe.returncode, 1)
 
 
-    @CouchDBVersion.minimal(0, 10, 0)
     def test_exit_if_gets_non_row_in_the_middle(self):
         ''' should exit if it gets a non-row in the middle '''
-        @CouchDBVersion.minimal(0, 10, 0)
-        def test():
+        if (0, 10, 0) <= COUCHDB_VERSION < (0, 11, 0):
             fun = functions['list_raw']
             self.qs.reset()
             self.qs.add_fun(fun)
             self.qs.send(['list', {'foo': 'bar'}, {'q': 'ok'}])
-
-        @CouchDBVersion.minimal(0, 10, 0)
-        def handle_error():
-            resp = self.qs.run(['reset'])
-            self.assertEqual(resp['error'], 'list_error')
-
-        @CouchDBVersion.minimal(0, 11, 0)
-        def test():
+        elif COUCHDB_VERSION >= (0, 11, 0):
             self.qs.send_ddoc(self.ddoc,
                               ['lists', 'raw'],
                               [{'foo': 'bar'}, {'q': 'ok'}])
-
-        @CouchDBVersion.minimal(0, 11, 0)
-        def handle_error():
+        else:
+            self.fail('Undefined test case for version %s'
+                      % '.'.join(map(str, COUCHDB_VERSION)))
+        resp = self.qs.recv()
+        self.assertEqual(resp, ['start', ['first chunk', 'ok'], {'headers': {}}])
+        if (0, 10, 0) <= COUCHDB_VERSION < (0, 11, 0):
+            resp = self.qs.run(['reset'])
+            self.assertEqual(resp['error'], 'list_error')
+        elif COUCHDB_VERSION >= (0, 11, 0):
             resp = self.qs.run(['reset'])
             self.assertEqual(resp[0], 'error')
             self.assertEqual(resp[1], 'list_error')
-
-        test()
-        resp = self.qs.recv()
-        self.assertEqual(resp, ['start', ['first chunk', 'ok'], {'headers': {}}])
-        handle_error()
         self.assertEqual(self.qs.close(), 1, self.qs.returncode)
 
     def test_fatal(self):
-        '''should exit'''
+        ''' should exit '''
 
-        @CouchDBVersion.minimal(0, 9, 0)
-        def test():
+        if (0, 9, 0) <= COUCHDB_VERSION < (0, 10, 0):
             fun = functions['fatal']
             self.qs.send(['show_doc', fun, {'foo': 'bar'}, {'q': 'ok'}])
             resp = self.qs.recv()
             self.assertEqual(resp, {'error': 'error_key', 'reason': 'testing'})
-
-        @CouchDBVersion.minimal(0, 10, 0)
-        def test():
+        elif (0, 10, 0) <= COUCHDB_VERSION < (0, 11, 0):
             fun = functions['fatal']
             self.qs.send(['show', fun, {'foo': 'bar'}, {'q': 'ok'}])
             resp = self.qs.recv()
             self.assertEqual(resp, {'error': 'error_key', 'reason': 'testing'})
-
-        @CouchDBVersion.minimal(0, 11, 0)
-        def test():
-            self.qs.send_ddoc(self.ddoc,
-                                    ['shows', 'fatal'],
-                                    [{'foo': 'bar'}, {'q': 'ok'}])
+        elif COUCHDB_VERSION >= (0, 11, 0):
+            self.qs.send_ddoc(self.ddoc, ['shows', 'fatal'],
+                                         [{'foo': 'bar'}, {'q': 'ok'}])
             resp = self.qs.recv()
             self.assertEqual(resp, ['error', 'error_key', 'testing'])
-
-        test()
         self.assertEqual(self.qs.close(), 1)
-
 
 class LegacyTestCases(unittest.TestCase):
 
@@ -828,36 +743,30 @@ class LegacyTestCases(unittest.TestCase):
         input = StringIO('["add_fun", "%s"]\n'
                          '["map_doc", {"foo": "bar"}]\n' % fun)
         output = StringIO()
-        view.run(input=input, output=output)
-        @CouchDBVersion.minimal(0, 9, 0)
-        def test():
+        view.run(input=input, output=output, version=COUCHDB_VERSION)
+        if (0, 9, 0) <= COUCHDB_VERSION < (0, 11, 0):
             self.assertEqual(output.getvalue(), 'true\n'
                                                 '{"log": "running"}\n'
                                                 '[[[null, {"foo": "bar"}]]]\n')
-        @CouchDBVersion.minimal(0, 11, 0)
-        def test():
+        elif COUCHDB_VERSION >= (0, 11, 0):
             self.assertEqual(output.getvalue(), 'true\n'
                                                 '["log", "running"]\n'
                                                 '[[[null, {"foo": "bar"}]]]\n')
-        test()
 
     def test_map_doc_with_logging_json(self):
         fun = 'def fun(doc): log([1, 2, 3]); yield None, doc'
         input = StringIO('["add_fun", "%s"]\n'
                          '["map_doc", {"foo": "bar"}]\n' % fun)
         output = StringIO()
-        view.run(input=input, output=output)
-        @CouchDBVersion.minimal(0, 9, 0)
-        def test():
+        view.run(input=input, output=output, version=COUCHDB_VERSION)
+        if (0, 9, 0) <= COUCHDB_VERSION < (0, 11, 0):
             self.assertEqual(output.getvalue(), 'true\n'
                                                 '{"log": "[1, 2, 3]"}\n'
                                                 '[[[null, {"foo": "bar"}]]]\n')
-        @CouchDBVersion.minimal(0, 11, 0)
-        def test():
+        elif COUCHDB_VERSION >= (0, 11, 0):
             self.assertEqual(output.getvalue(), 'true\n'
                                                 '["log", "[1, 2, 3]"]\n'
                                                 '[[[null, {"foo": "bar"}]]]\n')
-        test()
 
     def test_reduce(self):
         input = StringIO('["reduce", '
@@ -872,16 +781,13 @@ class LegacyTestCases(unittest.TestCase):
                           '["def fun(keys, values): log(\'Summing %r\' % (values,)); return sum(values)"], '
                           '[[null, 1], [null, 2], [null, 3]]]\n')
         output = StringIO()
-        view.run(input=input, output=output)
-        @CouchDBVersion.minimal(0, 9, 0)
-        def test():
+        view.run(input=input, output=output, version=COUCHDB_VERSION)
+        if (0, 9, 0) <= COUCHDB_VERSION < (0, 11, 0):
             self.assertEqual(output.getvalue(), '{"log": "Summing (1, 2, 3)"}\n'
                                                 '[true, [6]]\n')
-        @CouchDBVersion.minimal(0, 11, 0)
-        def test():
+        elif COUCHDB_VERSION >= (0, 11, 0):
             self.assertEqual(output.getvalue(), '["log", "Summing (1, 2, 3)"]\n'
                                                 '[true, [6]]\n')
-        test()
 
     def test_rereduce(self):
         input = StringIO('["rereduce", '
@@ -926,8 +832,18 @@ if __name__ == '__main__':
             # remove forced exit
             #if self.exit:
             #    sys.exit(not self.result.wasSuccessful())
-    for version in [(0,9,0), (0, 10, 0), (0, 11, 0), (1, 0 ,0)]:
-        print >>sys.stderr, 'Running for version:','.'.join(map(str, version))
-        CouchDBVersion.current = version
+    versions = [
+        (0, 9, 0), (0, 9, 1),
+        (0, 10, 0),
+        (0, 11, 0), (0, 11, 1),
+        (1, 0 ,0), (1, 0, 2),
+        (1, 1 ,0),
+        TRUNK
+    ]
+    for version in versions:
+        print >> sys.stderr, \
+                 'Running for version:', \
+                 ['.'.join(map(str, version)), 'trunk'][version == TRUNK]
+        COUCHDB_VERSION = version
         TestRunner(defaultTest='suite')
-        print >>sys.stderr, '\n'
+        print >> sys.stderr, '\n'

@@ -8,19 +8,20 @@
 # you should have received as part of this distribution.
 
 """Implementation of a view server for functions written in Python."""
-import traceback
-
-from codecs import BOM_UTF8
 import logging
 import os
 import sys
+import traceback
+from codecs import BOM_UTF8
 from types import FunctionType
 
 from couchdb import json
-from couchdb.util import CouchDBVersion
 
 __all__ = ['main', 'run']
 __docformat__ = 'restructuredtext en'
+
+TRUNK = (999, 999, 999) # assume latest one
+COUCHDB_VERSION = TRUNK
 
 class NullHandler(logging.Handler):
     def emit(self, *args, **kwargs):
@@ -31,14 +32,12 @@ log.addHandler(NullHandler())
 
 class ViewServerException(Exception):
 
-    @CouchDBVersion.minimal(0, 9, 0)
     def encode(self):
-        id, reason = self.args
-        return {'error': id, 'reason': reason}
-
-    @CouchDBVersion.minimal(0, 11, 0)
-    def encode(self):
-        return ['error'] + list(self.args)
+        if (0, 9, 0) <= COUCHDB_VERSION < (0, 11, 0):
+            id, reason = self.args
+            return {'error': id, 'reason': reason}
+        elif COUCHDB_VERSION >= (0, 11, 0):
+            return ['error'] + list(self.args)
 
 class Error(ViewServerException):
     pass
@@ -57,7 +56,11 @@ def run(input=sys.stdin, output=sys.stdout):
     :param input: the readable file-like object to read input from
     :param output: the writable file-like object to write output to
     """
-    
+
+################################################################################
+# Helpers
+#
+
     def debug_dump_args(func):
         argnames = func.func_code.co_varnames[:func.func_code.co_argcount]
         fname = func.func_name
@@ -68,7 +71,11 @@ def run(input=sys.stdin, output=sys.stdout):
             log.debug(msg)
             return func(*args, **kwargs)
         return wrapper
-    
+
+################################################################################
+# Common functions
+#
+
     @debug_dump_args
     def respond(obj):
         try:
@@ -85,19 +92,17 @@ def run(input=sys.stdin, output=sys.stdout):
             output.write('\n')
             output.flush()
 
-    @CouchDBVersion.minimal(0, 9, 0)
     def _log(message):
-        if message is None:
-            message = 'Error: attemting to log message of None'
-        if not isinstance(message, basestring):
-            message = json.encode(message)
-        respond({'log': message})
-
-    @CouchDBVersion.minimal(0, 11, 0)
-    def _log(message):
-        if not isinstance(message, basestring):
-            message = json.encode(message)
-        respond(['log', message])
+        if (0, 9, 0) <= COUCHDB_VERSION < (0, 11, 0):
+            if message is None:
+                message = 'Error: attemting to log message of None'
+            if not isinstance(message, basestring):
+                message = json.encode(message)
+            respond({'log': message})
+        elif COUCHDB_VERSION >= (0, 11, 0):
+            if not isinstance(message, basestring):
+                message = json.encode(message)
+            respond(['log', message])
 
     def compile_func(funstr):
         log.debug('Compiling code to function:\n%s', funstr)
@@ -116,6 +121,10 @@ def run(input=sys.stdin, output=sys.stdout):
             raise Error('compilation_error', msg)
         else:
             return func
+
+################################################################################
+# Mimeparse
+#
 
     class Mimeparse(object):
         __slots__ = ()
@@ -171,8 +180,12 @@ def run(input=sys.stdin, output=sys.stdout):
 
     Mimeparse = Mimeparse()
 
+################################################################################
+# Mime
+#
+
     class Mime(object):
-        __slots__ = ('resp_content_type')
+        __slots__ = ('resp_content_type',)
         mimes_by_key = {}
         keys_by_mime = {}
         mimefuns = []
@@ -274,8 +287,12 @@ def run(input=sys.stdin, output=sys.stdout):
 
     Mime = Mime()
 
+################################################################################
+# State
+#
+
     class State(object):
-        __slots__ = ('line_length')
+        __slots__ = ('line_length',)
         functions = []
         functions_src = []
         query_config = {}
@@ -294,6 +311,10 @@ def run(input=sys.stdin, output=sys.stdout):
             return True
 
     State = State()
+
+################################################################################
+# Views
+#
 
     class Views(object):
         __slots__ = ()
@@ -369,6 +390,9 @@ def run(input=sys.stdin, output=sys.stdout):
 
     Views = Views()
 
+################################################################################
+# Validate
+#
     class Validate(object):
         __slots__ = ()
 
@@ -391,18 +415,18 @@ def run(input=sys.stdin, output=sys.stdout):
                 self.handle_error(err, userctx)
             return 1
 
-        @CouchDBVersion.minimal(0, 9, 0)
-        def validate(self, funstr, *args):
-            func = compile_func(funstr)
-            return self.run_validate(func, *args)
-
-        @CouchDBVersion.minimal(0, 11, 0)
         def validate(self, func, *args):
+            if (0, 9, 0) <= COUCHDB_VERSION < (0, 11, 0):
+                func = compile_func(func)
             # occured at least for 0.11.1 - forth argument empty dict
             # what is it?
             return self.run_validate(func, *args[:3])
 
     Validate = Validate()
+
+################################################################################
+# Filters
+#
 
     class Filters(object):
         __slots__ = ()
@@ -412,15 +436,18 @@ def run(input=sys.stdin, output=sys.stdout):
             # userctx may not been passed
             return [True, [bool(func(doc, req, userctx)) for doc in docs]]
 
-        @CouchDBVersion.minimal(0, 10, 0)
         def filter(self, *args):
-            return self.run_filter(State.functions[0], *args)
-
-        @CouchDBVersion.minimal(0, 11, 0)
-        def filter(self, func, *args):
+            if (0, 10, 0) <= COUCHDB_VERSION < (0, 11, 0):
+                func = State.functions[0]
+            elif (0, 11, 0) <= COUCHDB_VERSION:
+                func, args = args[0], args[1:]
             return self.run_filter(func, *args)
 
     Filters = Filters()
+
+################################################################################
+# Render
+#
 
     class Render(object):
         __slots__ = ('gotrow', 'lastrow')
@@ -453,7 +480,7 @@ def run(input=sys.stdin, output=sys.stdout):
             if resp_content_type and not resp['headers'].get('Content-Type'):
                 resp['headers']['Content-Type'] = resp_content_type
             return resp
-        
+
         @debug_dump_args
         def send(self, chunk):
             self.chunks.append(unicode(chunk))
@@ -569,33 +596,23 @@ def run(input=sys.stdin, output=sys.stdout):
                 log.exception('unexpected error occured')
                 raise Error('render_error', str(err))
 
-        @CouchDBVersion.minimal(0, 10, 0)
         def list(self, *args):
-            return self.run_list(State.functions[0], *args)
-
-        @CouchDBVersion.minimal(0, 11, 0)
-        def list(self, func, *args):
+            if (0, 10, 0) <= COUCHDB_VERSION < (0, 11, 0):
+                func = State.functions[0]
+            elif COUCHDB_VERSION >= (0, 11, 0):
+                func, args = args[0], args[1:]
             return self.run_list(func, *args)
 
-        @CouchDBVersion.minimal(0, 10, 0)
-        def show(self, funstr, *args):
-            func = compile_func(funstr)
-            return self.run_show(func, *args)
-
-        @CouchDBVersion.minimal(0, 11, 0)
         def show(self, func, *args):
+            if (0, 10, 0) <= COUCHDB_VERSION < (0, 11, 0):
+                func = compile_func(func)
             return self.run_show(func, *args)
 
-        @CouchDBVersion.minimal(0, 10, 0)
-        def update(self, funstr, *args):
-            func = compile_func(funstr)
+        def update(self, func, *args):
+            if (0, 10, 0) <= COUCHDB_VERSION < (0, 11, 0):
+                func = compile_func(func)
             return self.run_update(func, *args)
 
-        @CouchDBVersion.minimal(0, 11, 0)
-        def update(self, func, *args):
-            return self.run_update(func, *args)
-                        
-        @CouchDBVersion.minimal(0, 10, 0)
         def html_render_error(self, err, funstr):
             import cgi
             return {
@@ -610,7 +627,10 @@ def run(input=sys.stdin, output=sys.stdout):
 
     Render = Render()
 
-    # for 0.9 only
+################################################################################
+# Render used only for 0.9.x
+#
+
     class RenderOld(object):
         __slots__ = ()
         row_line = {}
@@ -693,11 +713,14 @@ def run(input=sys.stdin, output=sys.stdout):
 
     RenderOld = RenderOld()
 
+################################################################################
+# DDoc used since 0.11.0
+#
+
     class DDoc(object):
         __slots__ = ()
         ddocs = {}
 
-        @CouchDBVersion.minimal(0, 11, 0)
         def dispatcher(self):
             return {
                 'lists': Render.list,
@@ -739,53 +762,67 @@ def run(input=sys.stdin, output=sys.stdout):
 
     DDoc = DDoc()
 
-    @CouchDBVersion.minimal(0, 9, 0)
-    def context_extension():
-        return {'response_with': RenderOld.response_with}
+################################################################################
+# Context for function compilation
+#
 
-    @CouchDBVersion.minimal(0, 10, 0)
-    def context_extension():
-        return {'start': Render.start,
-                'send': Render.send,
-                'get_row': Render.get_row}
+    def context():
+        result = {
+            'log': _log,
+            'provides': Mime.provides,
+            'register_type': Mime.register_type,
+            'json': json,
+            'Forbidden': Forbidden,
+            'Error': Error,
+            'FatalError': FatalError
+        }
+        if (0, 9, 0) <= COUCHDB_VERSION < (0, 10, 0):
+            result['response_with'] = RenderOld.response_with
+        elif COUCHDB_VERSION >= (0, 10, 0):
+            result['start'] = Render.start
+            result['send'] = Render.send
+            result['get_row'] = Render.get_row
+        return result
 
-    context = {
-        'log': _log,
-        'provides': Mime.provides,
-        'register_type': Mime.register_type,
-        'json': json,
-        'Forbidden': Forbidden,
-        'Error': Error,
-        'FatalError': FatalError}
-    context.update(context_extension())
+    context = context()
 
-    @CouchDBVersion.minimal(0, 9, 0)
-    def handlers_extension():
-        return {'show_doc': RenderOld.show_doc,
+################################################################################
+# Main loop handlers
+#
+
+    def handlers():
+        result = {
+            'reset': State.reset,
+            'add_fun': State.add_fun,
+            'map_doc': Views.map_doc,
+            'reduce': Views.reduce,
+            'rereduce': Views.rereduce
+        }
+        if (0, 9, 0) <= COUCHDB_VERSION < (0, 10, 0):
+            result.update({
+                'show_doc': RenderOld.show_doc,
                 'list_begin': RenderOld.list_begin,
                 'list_row': RenderOld.list_row,
                 'list_tail': RenderOld.list_tail,
-                'validate': Validate.validate}
-
-    @CouchDBVersion.minimal(0, 10, 0)
-    def handlers_extension():
-        return {'list': Render.list,
+                'validate': Validate.validate
+            })
+        elif (0, 10, 0) <= COUCHDB_VERSION < (0, 11, 0):
+            result.update({
+                'list': Render.list,
                 'show': Render.show,
                 'filter': Filters.filter,
                 'update': Render.update,
-                'validate': Validate.validate}
+                'validate': Validate.validate
+            })
+        elif COUCHDB_VERSION >= (0, 11, 0):
+            result['ddoc'] = DDoc.ddoc
+        return result
 
-    @CouchDBVersion.minimal(0, 11, 0)
-    def handlers_extension():
-        return {'ddoc': DDoc.ddoc}
+    handlers = handlers()
 
-    handlers = {
-        'reset': State.reset,
-        'add_fun': State.add_fun,
-        'map_doc': Views.map_doc,
-        'reduce': Views.reduce,
-        'rereduce': Views.rereduce}
-    handlers.update(handlers_extension())
+################################################################################
+# Main loop itself
+#
 
     try:
         while True:
@@ -863,6 +900,7 @@ def main():
     """Command-line entry point for running the view server."""
     import getopt
     from couchdb import __version__ as VERSION
+    global COUCHDB_VERSION
 
     try:
         option_list, argument_list = getopt.gnu_getopt(
@@ -898,7 +936,7 @@ def main():
                 version = value.split('.')
                 while len(version) < 3:
                     version.append(0)
-                CouchDBVersion.current = tuple(map(int, version[:3]))
+                COUCHDB_VERSION = tuple(map(int, version[:3]))
                 _run_version = '.'.join(version[:3])
         if message:
             sys.stdout.write(message)
