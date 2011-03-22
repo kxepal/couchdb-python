@@ -198,48 +198,29 @@ def run(input=sys.stdin, output=sys.stdout):
             # Ported from Ruby on Rails
             # Build list of Mime types for HTTP responses
             # http://www.iana.org/assignments/media-types/
-            # http://dev.rubyonrails.org/svn/rails/trunk/actionpack/lib/action_controller/mime_types.rb
-
-            self.register_type('all',
-                '*/*')
-            self.register_type('text',
-                'text/plain; charset=utf-8',
-                'txt')
-            self.register_type('html',
-                'text/html; charset=utf-8')
-            self.register_type('xhtml',
-                'application/xhtml+xml',
-                'xhtml')
-            self.register_type('xml',
-                'application/xml',
-                'text/xml',
-                'application/x-xml')
-            self.register_type('js',
-                'text/javascript',
-                'application/javascript',
-                'application/x-javascript')
-            self.register_type('css',
-                'text/css')
-            self.register_type('ics',
-                'text/calendar')
-            self.register_type('csv',
-                'text/csv')
-            self.register_type('rss',
-                'application/rss+xml')
-            self.register_type('atom',
-                'application/atom+xml')
-            self.register_type('yaml',
-                'application/x-yaml',
-                'text/yaml')
-            # just like Rails
-            self.register_type('multipart_form',
-                'multipart/form-data')
-            self.register_type('url_encoded_form',
-                'application/x-www-form-urlencoded')
-            # http://www.ietf.org/rfc/rfc4627.txt
-            self.register_type('json',
-                'application/json',
-                'text/x-json')
+            # http://dev.rubyonrails.org/svn/rails/trunk/actionpack/lib/action_controller/mime_types.rb            
+            types = {
+                'all': ['*/*'],
+                'text': ['text/plain; charset=utf-8', 'txt'],
+                'html': ['text/html; charset=utf-8'],
+                'xhtml': ['application/xhtml+xml', 'xhtml'],
+                'xml': ['application/xml', 'text/xml', 'application/x-xml'],
+                'js': ['text/javascript', 'application/javascript',
+                    'application/x-javascript'],
+                'css': ['text/css'],
+                'ics': ['text/calendar'],
+                'csv': ['text/csv'],
+                'rss': ['application/rss+xml'],
+                'atom': ['application/atom+xml'],
+                'yaml': ['application/x-yaml', 'text/yaml'],
+                # just like Rails
+                'multipart_form': ['multipart/form-data'],
+                'url_encoded_form': ['application/x-www-form-urlencoded'],
+                # http://www.ietf.org/rfc/rfc4627.txt
+                'json': ['application/json', 'text/x-json']
+            }
+            for k, v in types.items():
+                self.register_type(k, *v)
 
         @property
         def provides_used(self):
@@ -249,7 +230,7 @@ def run(input=sys.stdin, output=sys.stdout):
             self.resp_content_type = None
             del self.mimefuns[:]
 
-        def register_type(self, key, * args):
+        def register_type(self, key, *args):
             self.mimes_by_key[key] = args
             for item in args:
                 self.keys_by_mime[item] = key
