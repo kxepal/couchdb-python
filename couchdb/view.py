@@ -343,7 +343,8 @@ def run(input=sys.stdin, output=sys.stdout):
 #
 
     class State(object):
-        __slots__ = ('line_length',)
+        __slots__ = ('line_length', 'lib')
+        lib = None
         functions = []
         functions_src = []
         query_config = {}
@@ -357,8 +358,17 @@ def run(input=sys.stdin, output=sys.stdout):
 
         @debug_dump_args
         def add_fun(self, string):
-            self.functions.append(compile_func(string))
+            if (1, 1, 0) <= COUCHDB_VERSION <= TRUNK:
+                ddoc = {'views': {'lib': self.lib}}            
+                self.functions.append(compile_func(string, ddoc))
+            else:
+                self.functions.append(compile_func(string))
             self.functions_src.append(string)
+            return True
+        
+        @debug_dump_args
+        def add_lib(self, lib):
+            self.lib = lib;
             return True
 
     State = State()
@@ -870,6 +880,8 @@ def run(input=sys.stdin, output=sys.stdout):
             })
         elif COUCHDB_VERSION >= (0, 11, 0):
             result['ddoc'] = DDoc.ddoc
+        if (1, 1, 0) <= COUCHDB_VERSION:
+            result['add_lib'] = State.add_lib
         return result
 
     handlers = handlers()
