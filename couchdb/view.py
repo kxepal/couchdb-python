@@ -104,14 +104,82 @@ def run(input=sys.stdin, output=sys.stdout):
                 message = json.encode(message)
             respond(['log', message])
 
-    def compile_func(funstr):
+    @debug_dump_args
+    def resolve_module(names, mod, root=None):
+        id = mod.get('id')
+        parent = mod.get('parent')
+        current = mod.get('current')
+        if not names:
+            if not isinstance(current, basestring):
+                raise Error('invalid_require_path',
+                            'Must require Python string,'
+                            ' not\n%r' % current)
+            return {
+                'current': current,
+                'parent': parent,
+                'id': id,
+                'exports': {}
+            }
+        n = names.pop(0)
+        if n == '..':
+            if parent is None or parent.get('parent') is None:
+                raise Error('invalid_require_path',
+                            'Object has no parent %r' % current)
+            return resolve_module(names, {
+                'id': mod['id'][:mod['id'].rfind('/')],
+                'parent': mod['parent']['parent'].get('parent'),
+                'current': mod['parent']['parent'].get('current')
+            })
+        elif n == '.':
+            if parent is None:
+                raise Error('invalid_require_path',
+                            'Object has no parent %r' % current)
+            return resolve_module(names, {
+                'id': id,
+                'parent': mod['parent'].get('parent'),
+                'current': mod['parent'].get('current'),
+            })
+        elif root:
+            mod = {'current': root}
+        if not n in mod['current']:
+            raise Error('invalid_require_path',
+                        'Object has no property %s' % n)
+        return resolve_module(names, {
+            'current': mod['current'][n],
+            'parent': mod,
+            'id': (mod.get(id) is not None) and (mod['id'] + '/' + n) or n
+        })
+
+    def compile_func(funstr, ddoc=None):
+        # context is defined below after all classes
+        context.pop('require', None) # cleanup
+        @debug_dump_args
+        def require(name, module=None):
+            log.debug('Importing objects from %s', name)
+            module = module or {}
+            new_module = resolve_module(name.split('/'), module, ddoc)
+            source = new_module['current']
+            globals_ = {
+                'module': new_module,
+                'exports': new_module['exports'],
+            }
+            module_context = context.copy()
+            module_context['require'] = lambda name: require(name, new_module)
+            try:
+                bytecode = compile(source, '<string>', 'exec')
+                exec bytecode in module_context, globals_
+            except Exception, err:
+                raise Error('compilation_error', '%s:\n%s' % (err, source))
+            else:
+                return globals_['exports']
         log.debug('Compiling code to function:\n%s', funstr)
         funstr = BOM_UTF8 + funstr.encode('utf-8')
         globals_ = {}
+        if ddoc is not None:
+            context['require'] = require
         try:
             # compile + exec > exec
             bytecode = compile(funstr, '<string>', 'exec')
-            # context is defined below after all classes
             exec bytecode in context, globals_
         except Exception, err:
             raise Error('compilation_error', '%s:\n%s' % (err, funstr))
@@ -742,7 +810,7 @@ def run(input=sys.stdin, output=sys.stdout):
                 else:
                     func = point
                     if type(func) is not FunctionType:
-                        func = compile_func(func)
+                        func = compile_func(func, ddoc)
                 return dispatch[cmd](func, *func_args)
             return 1
 

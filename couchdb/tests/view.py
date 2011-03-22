@@ -70,6 +70,10 @@ def funcs():
             send('eggs')
         return 'tail'
 
+    def show_with_require(doc, req):
+        stuff = require('lib/utils.py')
+        return ' - '.join([stuff['title'], stuff['body']])
+
     def list_simple(head, req):
         send('first chunk')
         send(req['q'])
@@ -314,6 +318,64 @@ class ShowTestCase(QueryServerMixIn):
                 self.qs.teach_ddoc(ddoc)
                 self.qs.send_ddoc(ddoc, ['shows', 'simple'],
                                   [{'title': 'best ever', 'body': 'doc body'}, {}])
+            resp = self.qs.recv()
+            self.assertEqual(resp, ['resp', {'body': 'best ever - doc body'}])
+        else:
+            self.fail('Undefined test case for version %s'
+                      % '.'.join(map(str, COUCHDB_VERSION)))
+
+    def test_show_with_require(self):
+        ''' should show with data import '''
+        if (0, 9, 0) <= COUCHDB_VERSION < (0, 11, 0):
+            ''' require is new feature since 0.11.0 '''
+        elif COUCHDB_VERSION >= (0, 11, 0):
+            ddoc = {
+                '_id': 'foo',
+                'shows':{
+                    'with_require': functions['show_with_require'],
+                },
+                'lib': {
+                    'utils.py': (
+                        "if True:\n"
+                        "  exports['title'] = 'best ever' \n"
+                        "  exports['body'] = 'doc body'"
+                    )
+                }
+            }
+            self.qs.teach_ddoc(ddoc)
+            self.qs.send_ddoc(ddoc, ['shows', 'with_require'],
+                              [{'title': 'some title', 'body': 'some body'}, {}])
+            resp = self.qs.recv()
+            self.assertEqual(resp, ['resp', {'body': 'best ever - doc body'}])
+        else:
+            self.fail('Undefined test case for version %s'
+                      % '.'.join(map(str, COUCHDB_VERSION)))
+
+    def test_show_with_nested_require(self):
+        ''' should show with relative data import '''
+        if (0, 9, 0) <= COUCHDB_VERSION < (0, 11, 0):
+            ''' require is new feature since 0.11.0 '''
+        elif COUCHDB_VERSION >= (0, 11, 0):
+            ddoc = {
+                '_id': 'foo',
+                'shows':{
+                    'with_require': functions['show_with_require'],
+                },
+                'lib': {
+                    'helper': (
+                        "exports['title'] = 'best ever' \n"
+                        "exports['body'] = 'doc body'"),
+                    'utils.py': (
+                        "def help():\n"
+                        "  return require('../lib/helper') \n"
+                        "stuff = help()\n"
+                        "exports['title'] = stuff['title'] \n"
+                        "exports['body'] = stuff['body']")
+                }
+            }
+            self.qs.teach_ddoc(ddoc)
+            self.qs.send_ddoc(ddoc, ['shows', 'with_require'],
+                              [{'title': 'some title', 'body': 'some body'}, {}])
             resp = self.qs.recv()
             self.assertEqual(resp, ['resp', {'body': 'best ever - doc body'}])
         else:
