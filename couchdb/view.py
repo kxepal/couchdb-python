@@ -198,7 +198,7 @@ def run(input=sys.stdin, output=sys.stdout):
             # Ported from Ruby on Rails
             # Build list of Mime types for HTTP responses
             # http://www.iana.org/assignments/media-types/
-            # http://dev.rubyonrails.org/svn/rails/trunk/actionpack/lib/action_controller/mime_types.rb            
+            # http://dev.rubyonrails.org/svn/rails/trunk/actionpack/lib/action_controller/mime_types.rb
             types = {
                 'all': ['*/*'],
                 'text': ['text/plain; charset=utf-8', 'txt'],
@@ -417,9 +417,9 @@ def run(input=sys.stdin, output=sys.stdout):
         @debug_dump_args
         def run_filter(self, func, docs, req, userctx=None):
             if (0, 10, 0) <= COUCHDB_VERSION < (0, 11, 1):
-                filter_fun = lambda doc: func(doc, req, userctx)
+                filter_func = lambda doc: func(doc, req, userctx)
             elif (0, 11, 1) <= COUCHDB_VERSION:
-                filter_fun = lambda doc: func(doc, req)
+                filter_func = lambda doc: func(doc, req)
             return [True, [bool(filter_func(doc)) for doc in docs]]
 
         def filter(self, *args):

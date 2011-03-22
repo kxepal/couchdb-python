@@ -146,6 +146,10 @@ def funcs():
         if doc.get('good', False):
             return True
 
+    def filter_basic_new(doc, req):
+        if doc.get('good', False):
+            return True
+
     def update_basic(doc, req):
         doc['world'] = 'hello'
         return [doc, 'hello, doc']
@@ -375,7 +379,10 @@ class FilterTestCase(QueryServerMixIn):
         if (0, 9, 0) <= COUCHDB_VERSION < (0, 10, 0):
             ''' filters had been introduced in 0.10.0 '''
         elif COUCHDB_VERSION >= (0, 10, 0):
-            fun = functions['filter_basic']
+            if COUCHDB_VERSION < (0, 11, 1):
+                fun = functions['filter_basic']
+            elif (0, 11, 1) <= COUCHDB_VERSION:
+                fun = functions['filter_basic_new']
             if COUCHDB_VERSION < (0, 11, 0):
                 self.qs.reset()
                 self.assertEqual(self.qs.add_fun(fun), True)
@@ -833,7 +840,7 @@ if __name__ == '__main__':
             #if self.exit:
             #    sys.exit(not self.result.wasSuccessful())
     versions = [
-        (0, 9, 0), (0, 9, 1),
+        (0, 9, 0),
         (0, 10, 0),
         (0, 11, 0), (0, 11, 1),
         (1, 0 ,0), (1, 0, 2),
