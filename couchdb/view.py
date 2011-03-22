@@ -109,8 +109,10 @@ def run(input=sys.stdin, output=sys.stdout):
         funstr = BOM_UTF8 + funstr.encode('utf-8')
         globals_ = {}
         try:
+            # compile + exec > exec
+            bytecode = compile(funstr, '<string>', 'exec')
             # context is defined below after all classes
-            exec funstr in context, globals_
+            exec bytecode in context, globals_
         except Exception, err:
             raise Error('compilation_error', '%s:\n%s' % (err, funstr))
         try:
