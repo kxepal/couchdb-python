@@ -368,7 +368,7 @@ def run(input=sys.stdin, output=sys.stdout):
         
         @debug_dump_args
         def add_lib(self, lib):
-            self.lib = lib;
+            type(self).lib = lib;
             return True
 
     State = State()
