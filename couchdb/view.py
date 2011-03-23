@@ -507,7 +507,7 @@ def run(input=sys.stdin, output=sys.stdout, version=TRUNK):
 
         @debug_dump_args
         def run_filter_view(self, func, docs):
-            return [bool(tuple(func(doc))) for doc in docs]
+            return [True, [bool(tuple(func(doc))) for doc in docs]]
 
         def filter(self, *args):
             if (0, 10, 0) <= COUCHDB_VERSION < (0, 11, 0):
@@ -517,7 +517,7 @@ def run(input=sys.stdin, output=sys.stdout, version=TRUNK):
             return self.run_filter(func, *args)
 
         def filter_view(self, *args):
-            return self.run_filter(*args)
+            return self.run_filter_view(*args)
 
     Filters = Filters()
 
