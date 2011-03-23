@@ -21,7 +21,6 @@ __all__ = ['main', 'run']
 __docformat__ = 'restructuredtext en'
 
 TRUNK = (999, 999, 999) # assume latest one
-COUCHDB_VERSION = TRUNK
 
 class NullHandler(logging.Handler):
     def emit(self, *args, **kwargs):
@@ -30,32 +29,38 @@ class NullHandler(logging.Handler):
 log = logging.getLogger('couchdb.view')
 log.addHandler(NullHandler())
 
-class ViewServerException(Exception):
-
-    def encode(self):
-        if (0, 9, 0) <= COUCHDB_VERSION < (0, 11, 0):
-            id, reason = self.args
-            return {'error': id, 'reason': reason}
-        elif COUCHDB_VERSION >= (0, 11, 0):
-            return ['error'] + list(self.args)
-
-class Error(ViewServerException):
-    pass
-
-class FatalError(ViewServerException):
-    pass
-
-class Forbidden(ViewServerException):
-
-    def encode(self):
-        return {'forbidden': self.args[0]}
-
-def run(input=sys.stdin, output=sys.stdout):
+def run(input=sys.stdin, output=sys.stdout, version=TRUNK):
     r"""CouchDB view function handler implementation for Python.
 
     :param input: the readable file-like object to read input from
     :param output: the writable file-like object to write output to
+    :param version: three element tuple with represents couchdb server version
+                    number.
     """
+    COUCHDB_VERSION = version
+
+################################################################################
+# Exceptions
+#
+    class ViewServerException(Exception):
+
+        def encode(self):
+            if (0, 9, 0) <= COUCHDB_VERSION < (0, 11, 0):
+                id, reason = self.args
+                return {'error': id, 'reason': reason}
+            elif COUCHDB_VERSION >= (0, 11, 0):
+                return ['error'] + list(self.args)
+
+    class Error(ViewServerException):
+        pass
+
+    class FatalError(ViewServerException):
+        pass
+
+    class Forbidden(ViewServerException):
+
+        def encode(self):
+            return {'forbidden': self.args[0]}
 
 ################################################################################
 # Helpers
@@ -359,13 +364,13 @@ def run(input=sys.stdin, output=sys.stdout):
         @debug_dump_args
         def add_fun(self, string):
             if (1, 1, 0) <= COUCHDB_VERSION <= TRUNK:
-                ddoc = {'views': {'lib': self.lib}}            
+                ddoc = {'views': {'lib': self.lib}}
                 self.functions.append(compile_func(string, ddoc))
             else:
                 self.functions.append(compile_func(string))
             self.functions_src.append(string)
             return True
-        
+
         @debug_dump_args
         def add_lib(self, lib):
             type(self).lib = lib;
@@ -499,7 +504,7 @@ def run(input=sys.stdin, output=sys.stdout):
             elif (0, 11, 1) <= COUCHDB_VERSION:
                 filter_func = lambda doc: func(doc, req)
             return [True, [bool(filter_func(doc)) for doc in docs]]
-        
+
         @debug_dump_args
         def run_filter_view(self, func, docs):
             return [bool(tuple(func(doc))) for doc in docs]
@@ -510,7 +515,7 @@ def run(input=sys.stdin, output=sys.stdout):
             elif (0, 11, 0) <= COUCHDB_VERSION:
                 func, args = args[0], args[1:]
             return self.run_filter(func, *args)
-        
+
         def filter_view(self, *args):
             return self.run_filter(*args)
 
@@ -976,7 +981,6 @@ def main():
     """Command-line entry point for running the view server."""
     import getopt
     from couchdb import __version__ as VERSION
-    global COUCHDB_VERSION
 
     try:
         option_list, argument_list = getopt.gnu_getopt(
@@ -984,6 +988,7 @@ def main():
             ['version', 'help', 'json-module=', 'debug', 'log-file=',
              'couchdb-version=']
         )
+        version = TRUNK
         _run_version = 'latest'
         message = None
         for option, value in option_list:
@@ -1012,8 +1017,8 @@ def main():
                 version = value.split('.')
                 while len(version) < 3:
                     version.append(0)
-                COUCHDB_VERSION = tuple(map(int, version[:3]))
                 _run_version = '.'.join(version[:3])
+                version = tuple(map(int, version[:3]))
         if message:
             sys.stdout.write(message)
             sys.stdout.flush()
@@ -1027,7 +1032,7 @@ def main():
         sys.stderr.flush()
         sys.exit(1)
     log.info('View server started for CouchDB %s version' % _run_version)
-    sys.exit(run())
+    sys.exit(run(version=version))
 
 
 if __name__ == '__main__':
