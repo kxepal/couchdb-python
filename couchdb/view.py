@@ -499,6 +499,10 @@ def run(input=sys.stdin, output=sys.stdout):
             elif (0, 11, 1) <= COUCHDB_VERSION:
                 filter_func = lambda doc: func(doc, req)
             return [True, [bool(filter_func(doc)) for doc in docs]]
+        
+        @debug_dump_args
+        def run_filter_view(self, func, docs):
+            return [bool(tuple(func(doc))) for doc in docs]
 
         def filter(self, *args):
             if (0, 10, 0) <= COUCHDB_VERSION < (0, 11, 0):
@@ -506,6 +510,9 @@ def run(input=sys.stdin, output=sys.stdout):
             elif (0, 11, 0) <= COUCHDB_VERSION:
                 func, args = args[0], args[1:]
             return self.run_filter(func, *args)
+        
+        def filter_view(self, *args):
+            return self.run_filter(*args)
 
     Filters = Filters()
 
@@ -786,13 +793,16 @@ def run(input=sys.stdin, output=sys.stdout):
         ddocs = {}
 
         def dispatcher(self):
-            return {
+            result = {
                 'lists': Render.list,
                 'shows': Render.show,
                 'filters': Filters.filter,
                 'updates': Render.update,
                 'validate_doc_update': Validate.validate
             }
+            if COUCHDB_VERSION == TRUNK:
+                result['views'] = Filters.filter_view;
+            return result
 
         @debug_dump_args
         def ddoc(self, *_args):
