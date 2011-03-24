@@ -405,7 +405,7 @@ def run(input=sys.stdin, output=sys.stdout, version=TRUNK):
                     msg = 'map function raised error for doc._id %s\n%s\n'
                     funstr = State.functions_src[i]
                     log.exception(msg, docid, funstr)
-                    raise FatalError(type(err).__name__, msg % (docid, err))
+                    raise FatalError(err.__class__.__name__, msg % (docid, err))
                 else:
                     map_results.append(result)
                 # quick and dirty trick to prevent document from changing
@@ -434,7 +434,7 @@ def run(input=sys.stdin, output=sys.stdout, version=TRUNK):
                     # see comments for same block at map_doc
                     msg = 'reduce function raised error:\n%s' % err
                     log.exception(msg)
-                    raise Error(type(err).__name__, msg)
+                    raise Error(err.__class__.__name__, msg)
                 else:
                     reductions.append(result)
 
@@ -636,8 +636,8 @@ def run(input=sys.stdin, output=sys.stdout, version=TRUNK):
                 method = args[1]['method']
                 if method == 'GET':
                     log.debug('method: %s', method)
-                    raise Error('error', 'method_not_allowed',
-                                'Update functions do not allow GET')
+                    raise Error('method_not_allowed',
+                                'update functions do not allow GET')
                 doc, resp = fun(*args)
                 if isinstance(resp, (dict, basestring)):
                     respond(['up', doc, self.maybe_wrap_response(resp)])
@@ -931,9 +931,9 @@ def run(input=sys.stdin, output=sys.stdout, version=TRUNK):
                 log.exception('Error occured %s: %s', *err.args)
                 respond(err.encode())
             except Exception, err:
-                err_name = type(err).__name__
+                err_name = err.__class__.__name__
                 err_msg = str(err)
-                respond(['error', err_name, err_msg])
+                respond(Error(err_name, err_msg).encode())
                 log.exception('%s: %s', err_name, err_msg)
                 log.critical('That was a critical error, exiting')
                 return 1
