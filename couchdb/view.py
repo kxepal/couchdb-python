@@ -37,6 +37,7 @@ def run(input=sys.stdin, output=sys.stdout, version=TRUNK):
     :param version: three element tuple with represents couchdb server version
                     number.
     """
+    assert version <= TRUNK
     COUCHDB_VERSION = version
 
 ################################################################################
