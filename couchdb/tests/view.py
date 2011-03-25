@@ -26,6 +26,11 @@ def funcs():
         yield 'foo', doc['a']
         yield 'bar', doc['a']
 
+    def emit_changes(doc):
+        assert doc['_id'] == 'foo'
+        doc['_id'] = 'bar'
+        yield doc['_id'], None
+
     def emit_once(doc):
         yield 'baz', doc['a']
 
@@ -235,6 +240,15 @@ class ViewTestCase(QueryServerMixIn):
         self.assertEqual(rows[0][0], ['foo', 'b'])
         self.assertEqual(rows[0][1], ['bar', 'b'])
         self.assertEqual(rows[1][0], ['baz', 'b'])
+
+    def test_documents_seal(self):
+        ''' should not allow cascade document changes within map funs '''
+        self.qs.reset()
+        self.assertEqual(self.qs.run(['add_fun', functions['emit_changes']]), True)
+        self.assertEqual(self.qs.run(['add_fun', functions['emit_changes']]), True)
+        rows = self.qs.run(['map_doc', {'_id': 'foo'}])
+        self.assertEqual(rows[0][0], ['bar', None])
+        self.assertEqual(rows[0][0], ['bar', None])
 
     def test_add_lib(self):
         ''' should add and require lib '''
@@ -957,7 +971,7 @@ if __name__ == '__main__':
         (0, 9, 0),
         (0, 10, 0),
         (0, 11, 0), (0, 11, 1),
-        (1, 0 ,0), (1, 0, 2),
+        (1, 0 ,0),
         (1, 1 ,0),
         TRUNK
     ]
