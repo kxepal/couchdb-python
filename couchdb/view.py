@@ -850,13 +850,14 @@ def run(input=sys.stdin, output=sys.stdout, version=TRUNK):
     def context():
         result = {
             'log': _log,
-            'provides': Mime.provides,
-            'register_type': Mime.register_type,
             'json': json,
             'Forbidden': Forbidden,
             'Error': Error,
             'FatalError': FatalError
         }
+        if (0, 9, 0) <= COUCHDB_VERSION:
+            result['provides'] = Mime.provides
+            result['register_type'] = Mime.register_type
         if (0, 9, 0) <= COUCHDB_VERSION < (0, 10, 0):
             result['response_with'] = RenderOld.response_with
         elif COUCHDB_VERSION >= (0, 10, 0):
@@ -972,7 +973,9 @@ Options:
   --debug                 enable debug logging; requires --log-file to be
                           specified
   --couchdb-version=<ver> define with which version of couchdb server will work
-                          default: latest one.
+                          default: latest implemented.
+                          Supports from 0.9.0 to 1.1.0 and trunk. Technicaly
+                          should work with 0.8.0.
                           e.g.: --couchdb-version=0.9.0
 
 Report bugs via the web at <http://code.google.com/p/couchdb-python>.
