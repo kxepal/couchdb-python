@@ -29,6 +29,9 @@ def funcs():
     def emit_once(doc):
         yield 'baz', doc['a']
 
+    def emit_with_lib(doc):
+        yield 'foo', require('views/lib/foo')['bar']
+
     def reduce_values_length(keys, values, rereduce):
         return len(values)
 
@@ -228,6 +231,23 @@ class ViewTestCase(QueryServerMixIn):
         self.assertEqual(rows[0][0], ['foo', 'b'])
         self.assertEqual(rows[0][1], ['bar', 'b'])
         self.assertEqual(rows[1][0], ['baz', 'b'])
+
+    def test_add_lib(self):
+        ''' should add and require lib '''
+        if COUCHDB_VERSION >= (1, 1, 0):
+            self.qs.run(['add_lib', {'foo': 'exports["bar"] = "bar"'}])
+            self.qs.run(['add_fun', functions['emit_with_lib']])
+            rows = self.qs.run(['map_doc', {'_id': 'foo', 'bar': 'baz'}])
+            self.assertEqual(rows[0][0], ['foo', 'bar'])
+        else:
+            resp = self.qs.run(['add_lib', {'foo': 'exports["bar"] = "bar"'}])
+            if COUCHDB_VERSION < (0, 11, 0):
+                self.assertEqual(resp, {'error': 'unknown_command',
+                                        'reason': 'unknown command add_lib'})
+            else:
+                self.assertEqual(resp, ['error', 'unknown_command',
+                                        'unknown command add_lib'])
+            self.assertEqual(self.qs.close(), 1)
 
     def test_reduce(self):
         ''' should reduce '''
