@@ -29,6 +29,10 @@ def funcs():
     def emit_once(doc):
         yield 'baz', doc['a']
 
+    def emit_foo(doc):
+        if doc['_id'] == 'foo':
+            yield doc['_id'], None
+
     def emit_with_lib(doc):
         yield 'foo', require('views/lib/foo')['bar']
 
@@ -508,6 +512,28 @@ class FilterTestCase(QueryServerMixIn):
         else:
             self.fail('Undefined test case for version %s'
                       % '.'.join(map(str, COUCHDB_VERSION)))
+
+    def test_filter_view(self):
+        ''' should only return true for docs emited by view map '''
+        ddoc = make_ddoc(['views', 'emit_foo'], functions['emit_foo'])
+        resp = self.qs.teach_ddoc(ddoc)
+        if COUCHDB_VERSION == TRUNK:
+            self.qs.send_ddoc(ddoc, ['views', 'emit_foo'], [[{'_id': 'foo'},
+                                                             {'_id': 'bar'}]])
+            resp = self.qs.recv()
+            self.assertEqual(resp, [True, [True, False]])
+        elif COUCHDB_VERSION < (0, 11, 0):
+            self.assertEqual(resp, {'error': 'unknown_command',
+                                    'reason': 'unknown command ddoc'})
+            self.assertEqual(self.qs.close(), 1)
+        elif COUCHDB_VERSION < TRUNK:
+            self.qs.send_ddoc(ddoc, ['views', 'emit_foo'], [[{'_id': 'foo'},
+                                                             {'_id': 'bar'}]])
+            resp = self.qs.recv()
+            self.assertEqual(resp, ['error', 'unknown_command',
+                                    'unknown ddoc command `views`'])
+            self.assertEqual(self.qs.close(), 1)
+
 
 class UpdateTestCase(QueryServerMixIn):
 
