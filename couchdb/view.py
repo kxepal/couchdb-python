@@ -475,19 +475,20 @@ def run(input=sys.stdin, output=sys.stdout, version=TRUNK):
                 raise Forbidden(str(err))
 
         @debug_dump_args
-        def run_validate(self, func, newdoc, olddoc, userctx):
+        def run_validate(self, func, *args):
             try:
-                func(newdoc, olddoc, userctx)
+                func(*args)
             except (AssertionError, Forbidden), err:
-                self.handle_error(err, userctx)
+                self.handle_error(err, args[2])
             return 1
 
         def validate(self, func, *args):
-            if (0, 9, 0) <= COUCHDB_VERSION < (0, 11, 0):
+            if COUCHDB_VERSION < (0, 11, 0):
                 func = compile_func(func)
-            # occured at least for 0.11.1 - forth argument empty dict
-            # what is it?
-            return self.run_validate(func, *args[:3])
+            if COUCHDB_VERSION >= (0, 11, 1):
+                argcount = func.func_code.co_argcount == 4 and 4 or 3
+                args = args[:argcount]
+            return self.run_validate(func, *args)
 
     Validate = Validate()
 

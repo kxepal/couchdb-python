@@ -39,6 +39,10 @@ def funcs():
         if newdoc.get('bad', False):
             raise Forbidden('bad doc')
 
+    def validate_with_secobj(newdoc, olddoc, userctx, secobj):
+        if newdoc.get('bad', False):
+            raise Forbidden('bad doc')
+
     def show_simple(doc, req):
         log('ok')
         return ' - '.join([doc['title'], doc['body']])
@@ -297,6 +301,28 @@ class ValidateTestCase(QueryServerMixIn):
                       % '.'.join(map(str, COUCHDB_VERSION)))
         resp = self.qs.recv()
         self.assertEqual(resp, {'forbidden': 'bad doc'})
+
+    def test_validate_with_security_object(self):
+        ''' should accept secobj argument since 0.11.1 '''
+        if (0, 9, 0) <= COUCHDB_VERSION < (0, 11, 1):
+            ''' should fail due to unexpected argument '''
+            if COUCHDB_VERSION == (0, 11, 0):
+                self.qs.send_ddoc(self.ddoc, ['validate_doc_update'],
+                                             [{'good': True}, {}, {}, {}])
+            else:
+                fun = functions['validate_forbidden']
+                self.qs.send(['validate', fun, {'good': True}, {}, {}, {}])
+            resp = self.qs.recv()
+            self.assertEqual(self.qs.close(), 1)
+        elif COUCHDB_VERSION >= (0, 11, 1):
+            self.qs.send_ddoc(self.ddoc, ['validate_doc_update'],
+                                         [{'good': True}, {}, {}, {}])
+            resp = self.qs.recv()
+            self.assertEqual(resp, 1)
+        else:
+            self.fail('Undefined test case for version %s'
+                      % '.'.join(map(str, COUCHDB_VERSION)))
+
 
 class ShowTestCase(QueryServerMixIn):
 
