@@ -9,6 +9,8 @@
 import random
 import sys
 import subprocess
+import types
+import unittest
 from couchdb import client
 from couchdb import json
 
@@ -47,6 +49,26 @@ class TempDatabaseMixin(object):
         if self._db is None:
             name, self._db = self.temp_db()
         return self._db
+
+
+class TestRunner(unittest.main):
+    def runTests(self):
+        if self.testRunner is None:
+            self.testRunner = unittest.TextTestRunner
+        if isinstance(self.testRunner, (type, types.ClassType)):
+            try:
+                testRunner = self.testRunner(verbosity=self.verbosity)
+            except TypeError:
+                # didn't accept the verbosity, buffer or failfast arguments
+                testRunner = self.testRunner()
+        else:
+            # it is assumed to be a TestRunner instance
+            testRunner = self.testRunner
+        self.result = testRunner.run(self.test)
+        # remove forced exit
+        #if self.exit:
+        #    sys.exit(not self.result.wasSuccessful())
+
 
 class QueryServer(object):
 

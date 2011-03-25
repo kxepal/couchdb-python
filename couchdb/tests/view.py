@@ -14,7 +14,7 @@ from StringIO import StringIO
 from os.path import normpath, join, dirname
 
 from couchdb import view
-from testutil import QueryServer
+from testutil import QueryServer, TestRunner
 
 VIEW_SERVER = normpath(join(dirname(__file__), '../view.py'))
 
@@ -953,24 +953,6 @@ def suite():
 
 
 if __name__ == '__main__':
-    import types
-    class TestRunner(unittest.main):
-        def runTests(self):
-            if self.testRunner is None:
-                self.testRunner = unittest.TextTestRunner
-            if isinstance(self.testRunner, (type, types.ClassType)):
-                try:
-                    testRunner = self.testRunner(verbosity=self.verbosity)
-                except TypeError:
-                    # didn't accept the verbosity, buffer or failfast arguments
-                    testRunner = self.testRunner()
-            else:
-                # it is assumed to be a TestRunner instance
-                testRunner = self.testRunner
-            self.result = testRunner.run(self.test)
-            # remove forced exit
-            #if self.exit:
-            #    sys.exit(not self.result.wasSuccessful())
     versions = [
         (0, 9, 0),
         (0, 10, 0),
