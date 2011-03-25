@@ -617,12 +617,11 @@ def run(input=sys.stdin, output=sys.stdout, version=TRUNK):
                     resp = Mime.run_provides(args[1])
                     resp = self.maybe_wrap_response(resp)
                     resp = self.apply_content_type(resp, Mime.resp_content_type)
-                if isinstance(resp, (dict, basestring)):
-                    respond(['resp', self.maybe_wrap_response(resp)])
-                else:
+                if not isinstance(resp, (dict, basestring)):
                     log.debug('resp: %r ; type: %r', resp, type(resp))
                     raise Error('render_error',
                                 'undefined response from show function')
+                return ['resp', self.maybe_wrap_response(resp)]
             except Exception, err:
                 if args[0] is None and self.is_doc_request_path(args[1]):
                     raise Error('not_found', 'document not found')
@@ -641,12 +640,11 @@ def run(input=sys.stdin, output=sys.stdout, version=TRUNK):
                     raise Error('method_not_allowed',
                                 'update functions do not allow GET')
                 doc, resp = fun(*args)
-                if isinstance(resp, (dict, basestring)):
-                    respond(['up', doc, self.maybe_wrap_response(resp)])
-                else:
+                if not isinstance(resp, (dict, basestring)):
                     log.debug('resp: %r ; type: %r', resp, type(resp))
                     raise Error('render_error',
                                 'undefined response from update function')
+                return ['up', doc, self.maybe_wrap_response(resp)]
             except ViewServerException:
                 raise
             except Exception, err:
