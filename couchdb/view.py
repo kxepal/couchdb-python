@@ -46,10 +46,10 @@ def run(input=sys.stdin, output=sys.stdout, version=TRUNK):
     class ViewServerException(Exception):
 
         def encode(self):
-            if (0, 9, 0) <= COUCHDB_VERSION < (0, 11, 0):
+            if COUCHDB_VERSION < (0, 11, 0):
                 id, reason = self.args
                 return {'error': id, 'reason': reason}
-            elif COUCHDB_VERSION >= (0, 11, 0):
+            else:
                 return ['error'] + list(self.args)
 
     class Error(ViewServerException):
@@ -99,13 +99,13 @@ def run(input=sys.stdin, output=sys.stdout, version=TRUNK):
             output.flush()
 
     def _log(message):
-        if (0, 9, 0) <= COUCHDB_VERSION < (0, 11, 0):
+        if COUCHDB_VERSION < (0, 11, 0):
             if message is None:
                 message = 'Error: attemting to log message of None'
             if not isinstance(message, basestring):
                 message = json.encode(message)
             respond({'log': message})
-        elif COUCHDB_VERSION >= (0, 11, 0):
+        else:
             if not isinstance(message, basestring):
                 message = json.encode(message)
             respond(['log', message])
@@ -363,13 +363,13 @@ def run(input=sys.stdin, output=sys.stdout, version=TRUNK):
             return True
 
         @debug_dump_args
-        def add_fun(self, string):
+        def add_fun(self, funstr):
             if (1, 1, 0) <= COUCHDB_VERSION <= TRUNK:
                 ddoc = {'views': {'lib': self.lib}}
-                self.functions.append(compile_func(string, ddoc))
+                self.functions.append(compile_func(funstr, ddoc))
             else:
-                self.functions.append(compile_func(string))
-            self.functions_src.append(string)
+                self.functions.append(compile_func(funstr))
+            self.functions_src.append(funstr)
             return True
 
         @debug_dump_args
@@ -501,9 +501,9 @@ def run(input=sys.stdin, output=sys.stdout, version=TRUNK):
 
         @debug_dump_args
         def run_filter(self, func, docs, req, userctx=None):
-            if (0, 10, 0) <= COUCHDB_VERSION < (0, 11, 1):
+            if COUCHDB_VERSION < (0, 11, 1):
                 filter_func = lambda doc: func(doc, req, userctx)
-            elif (0, 11, 1) <= COUCHDB_VERSION:
+            else:
                 filter_func = lambda doc: func(doc, req)
             return [True, [bool(filter_func(doc)) for doc in docs]]
 
@@ -512,9 +512,9 @@ def run(input=sys.stdin, output=sys.stdout, version=TRUNK):
             return [True, [bool(tuple(func(doc))) for doc in docs]]
 
         def filter(self, *args):
-            if (0, 10, 0) <= COUCHDB_VERSION < (0, 11, 0):
+            if COUCHDB_VERSION < (0, 11, 0):
                 func = State.functions[0]
-            elif (0, 11, 0) <= COUCHDB_VERSION:
+            else:
                 func, args = args[0], args[1:]
             return self.run_filter(func, *args)
 
@@ -675,19 +675,19 @@ def run(input=sys.stdin, output=sys.stdout, version=TRUNK):
                 raise Error('render_error', str(err))
 
         def list(self, *args):
-            if (0, 10, 0) <= COUCHDB_VERSION < (0, 11, 0):
+            if COUCHDB_VERSION < (0, 11, 0):
                 func = State.functions[0]
-            elif COUCHDB_VERSION >= (0, 11, 0):
+            else:
                 func, args = args[0], args[1:]
             return self.run_list(func, *args)
 
         def show(self, func, *args):
-            if (0, 10, 0) <= COUCHDB_VERSION < (0, 11, 0):
+            if COUCHDB_VERSION < (0, 11, 0):
                 func = compile_func(func)
             return self.run_show(func, *args)
 
         def update(self, func, *args):
-            if (0, 10, 0) <= COUCHDB_VERSION < (0, 11, 0):
+            if COUCHDB_VERSION < (0, 11, 0):
                 func = compile_func(func)
             return self.run_update(func, *args)
 
