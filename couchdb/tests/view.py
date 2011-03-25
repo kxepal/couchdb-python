@@ -724,9 +724,7 @@ class CrushTestCase(QueryServerMixIn):
             self.assertEqual(resp, ['error',
                                     'unknown_command',
                                     'unknown command list_row'])
-        self.qs.pipe.wait()
-        self.assertEqual(self.qs.pipe.returncode, 1)
-
+        self.assertEqual(self.qs.close(), 1)
 
     def test_exit_if_gets_non_row_in_the_middle(self):
         ''' should exit if it gets a non-row in the middle '''
@@ -751,7 +749,7 @@ class CrushTestCase(QueryServerMixIn):
             resp = self.qs.run(['reset'])
             self.assertEqual(resp[0], 'error')
             self.assertEqual(resp[1], 'list_error')
-        self.assertEqual(self.qs.close(), 1, self.qs.returncode)
+        self.assertEqual(self.qs.close(), 1)
 
     def test_fatal(self):
         ''' should exit '''

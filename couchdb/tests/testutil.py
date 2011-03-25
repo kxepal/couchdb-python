@@ -56,8 +56,7 @@ class QueryServer(object):
             self.stream = stream
 
         def read(self):
-            while not self.stream.closed and self.proc.returncode is None:
-                self.proc.poll()
+            while not self.stream.closed and self.proc.poll() is None:
                 line = self.stream.readline()
                 if not line:
                     continue
@@ -71,32 +70,25 @@ class QueryServer(object):
 
     def __init__(self, viewsrv_path, version):
         version = '.'.join(map(str, version))
-        exc = [sys.executable, viewsrv_path, '--couchdb-version='+version]
-        self.pipe = subprocess.Popen(exc, shell=True, stdin=subprocess.PIPE,
-                                                      stdout=subprocess.PIPE)
+        exc = [sys.executable, viewsrv_path, '--couchdb-version=' + version]
+        self.pipe = subprocess.Popen(exc, stdin=subprocess.PIPE,
+                                          stdout=subprocess.PIPE)
         self.input = self.pipe.stdin
         self.output = self.pipe.stdout
         self.reader = self.Reader(self.pipe, self.output)
-
-    def x(self):
-        return len(self.output)
-
-    @property
-    def returncode(self):
-        return self.pipe.returncode
 
     def close(self):
         self.input.close()
         self.reader.stream.close()
         self.pipe.wait()
-        return self.returncode
+        return self.pipe.returncode
 
     def run(self, query):
         self.send(query)
         return self.recv()
 
     def send(self, query):
-        self.input.write(json.encode(query)+'\n')
+        self.input.write(json.encode(query) + '\n')
 
     def recv(self):
         for data in self.reader.read():
@@ -112,8 +104,8 @@ class QueryServer(object):
         return self.run(['ddoc', 'new', self.ddoc_id(ddoc), ddoc])
 
     def ddoc_id(self, ddoc):
-        d_id = ddoc['_id']
-        assert d_id
+        d_id = ddoc.get('_id')
+        assert d_id, 'document _id missed'
         return d_id
 
     def send_ddoc(self, ddoc, fun_path, args):
