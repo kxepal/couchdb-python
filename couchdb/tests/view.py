@@ -202,12 +202,14 @@ def make_ddoc(fun_path, fun_str):
     d[l] = fun_str
     return doc
 
+
 class QueryServerMixIn(unittest.TestCase):
     def setUp(self):
         self.qs = QueryServer(VIEW_SERVER, version=COUCHDB_VERSION)
 
     def tearDown(self):
         self.qs.close()
+
 
 class ViewTestCase(QueryServerMixIn):
 
@@ -218,13 +220,14 @@ class ViewTestCase(QueryServerMixIn):
 
     def test_reset_should_not_erase_ddocs(self):
         ''' should not erase ddocs on reset '''
-
+        fun = functions['show_simple']
+        ddoc = make_ddoc(['shows', 'simple'], fun)
+        resp = self.qs.teach_ddoc(ddoc)
         if COUCHDB_VERSION < (0, 11, 0):
-            ''' ddocs had been introduced in 0.11.0 '''
-        elif COUCHDB_VERSION >= (0, 11, 0):
-            fun = functions['show_simple']
-            ddoc = make_ddoc(['shows', 'simple'], fun)
-            self.qs.teach_ddoc(ddoc)
+            self.assertEqual(resp, {'error': 'unknown_command',
+                                    'reason': 'unknown command ddoc'})
+            self.assertEqual(self.qs.close(), 1)
+        else:
             self.assertEqual(self.qs.run(['reset']), True)
             self.qs.send_ddoc(ddoc, ['shows', 'simple'],
                               [{'title': 'best ever', 'body': 'doc body'}, {}])
@@ -271,7 +274,7 @@ class ViewTestCase(QueryServerMixIn):
         ''' should reduce '''
         fun = functions['reduce_values_length']
         self.qs.reset()
-        kvs = [(i, i*2) for i in xrange(10)]
+        kvs = [(i, i * 2) for i in xrange(10)]
         self.assertEqual(self.qs.run(['reduce', [fun], kvs]), [True, [10]])
 
     def test_rereduce(self):
@@ -289,13 +292,16 @@ class ViewTestCase(QueryServerMixIn):
 
     def test_learn_design_docs(self):
         ''' should learn design docs '''
-
+        ddoc = {'_id': 'foo'}
+        self.qs.reset()
+        resp = self.qs.teach_ddoc(ddoc)
         if COUCHDB_VERSION < (0, 11, 0):
-            ''' ddocs had been introduced in 0.11.0 '''
+            self.assertEqual(resp, {'error': 'unknown_command',
+                                    'reason': 'unknown command ddoc'})
+            self.assertEqual(self.qs.close(), 1)
         else:
-            ddoc = {'_id': 'foo'}
-            self.qs.reset()
-            self.assertEqual(self.qs.teach_ddoc(ddoc), True)
+            self.assertEqual(resp, True)
+
 
 class ValidateTestCase(QueryServerMixIn):
 
@@ -313,7 +319,6 @@ class ValidateTestCase(QueryServerMixIn):
 
     def test_validate_all_good_updates(self):
         ''' should allow good updates '''
-
         if (0, 9, 0) <= COUCHDB_VERSION < (0, 11, 0):
             fun = functions['validate_forbidden']
             self.qs.send(['validate', fun, {'good': True}, {}, {}])
@@ -377,7 +382,7 @@ class ShowTestCase(QueryServerMixIn):
             if COUCHDB_VERSION < (0, 11, 0):
                 self.qs.send(['show', fun,
                              {'title': 'best ever', 'body': 'doc body'}, {}])
-            elif COUCHDB_VERSION >= (0, 11, 0):
+            else:
                 ddoc = make_ddoc(['shows', 'simple'], fun)
                 self.qs.teach_ddoc(ddoc)
                 self.qs.send_ddoc(ddoc, ['shows', 'simple'],
@@ -390,61 +395,59 @@ class ShowTestCase(QueryServerMixIn):
 
     def test_show_with_require(self):
         ''' should show with data import '''
-        if (0, 9, 0) <= COUCHDB_VERSION < (0, 11, 0):
-            ''' require is new feature since 0.11.0 '''
-        elif COUCHDB_VERSION >= (0, 11, 0):
-            ddoc = {
-                '_id': 'foo',
-                'shows':{
-                    'with_require': functions['show_with_require'],
-                },
-                'lib': {
-                    'utils.py': (
-                        "if True:\n"
-                        "  exports['title'] = 'best ever' \n"
-                        "  exports['body'] = 'doc body'"
-                    )
-                }
+        ddoc = {
+            '_id': 'foo',
+            'shows':{
+                'with_require': functions['show_with_require'],
+            },
+            'lib': {
+                'utils.py': (
+                    "if True:\n"
+                    "  exports['title'] = 'best ever' \n"
+                    "  exports['body'] = 'doc body'"
+                )
             }
-            self.qs.teach_ddoc(ddoc)
+        }
+        resp = self.qs.teach_ddoc(ddoc)
+        if COUCHDB_VERSION < (0, 11, 0):
+            self.assertEqual(resp, {'error': 'unknown_command',
+                                    'reason': 'unknown command ddoc'})
+            self.assertEqual(self.qs.close(), 1)
+        else:
             self.qs.send_ddoc(ddoc, ['shows', 'with_require'],
                               [{'title': 'some title', 'body': 'some body'}, {}])
             resp = self.qs.recv()
             self.assertEqual(resp, ['resp', {'body': 'best ever - doc body'}])
-        else:
-            self.fail('Undefined test case for version %s'
-                      % '.'.join(map(str, COUCHDB_VERSION)))
 
     def test_show_with_nested_require(self):
         ''' should show with relative data import '''
-        if (0, 9, 0) <= COUCHDB_VERSION < (0, 11, 0):
-            ''' require is new feature since 0.11.0 '''
-        elif COUCHDB_VERSION >= (0, 11, 0):
-            ddoc = {
-                '_id': 'foo',
-                'shows':{
-                    'with_require': functions['show_with_require'],
-                },
-                'lib': {
-                    'helper': (
-                        "exports['title'] = 'best ever' \n"
-                        "exports['body'] = 'doc body'"),
-                    'utils.py': (
-                        "def help():\n"
-                        "  return require('../lib/helper') \n"
-                        "stuff = help()\n"
-                        "exports['title'] = stuff['title'] \n"
-                        "exports['body'] = stuff['body']")
-                }
+        ddoc = {
+            '_id': 'foo',
+            'shows':{
+                'with_require': functions['show_with_require'],
+            },
+            'lib': {
+                'helper': (
+                    "exports['title'] = 'best ever' \n"
+                    "exports['body'] = 'doc body'"),
+                'utils.py': (
+                    "def help():\n"
+                    "  return require('../lib/helper') \n"
+                    "stuff = help()\n"
+                    "exports['title'] = stuff['title'] \n"
+                    "exports['body'] = stuff['body']")
             }
-            self.qs.teach_ddoc(ddoc)
+        }
+        resp = self.qs.teach_ddoc(ddoc)
+        if COUCHDB_VERSION < (0, 11, 0):
+            self.assertEqual(resp, {'error': 'unknown_command',
+                                    'reason': 'unknown command ddoc'})
+            self.assertEqual(self.qs.close(), 1)
+        else:
             self.qs.send_ddoc(ddoc, ['shows', 'with_require'],
                               [{'title': 'some title', 'body': 'some body'}, {}])
             resp = self.qs.recv()
             self.assertEqual(resp, ['resp', {'body': 'best ever - doc body'}])
-        else:
-            self.fail('Undefined test case for version %s'
-                      % '.'.join(map(str, COUCHDB_VERSION)))
 
     def test_show_with_headers(self):
         ''' should show headers '''
@@ -461,8 +464,7 @@ class ShowTestCase(QueryServerMixIn):
             if COUCHDB_VERSION < (0, 11, 0):
                 self.qs.send(['show', fun,
                              {'title': 'best ever', 'body': 'doc body'}, {}])
-
-            elif COUCHDB_VERSION >= (0, 11, 0):
+            else:
                 ddoc = make_ddoc(['shows', 'headers'], fun)
                 self.qs.teach_ddoc(ddoc)
                 self.qs.send_ddoc(ddoc, ['shows', 'headers'],
@@ -474,6 +476,7 @@ class ShowTestCase(QueryServerMixIn):
         else:
             self.fail('Undefined test case for version %s'
                       % '.'.join(map(str, COUCHDB_VERSION)))
+
 
 class ErrorTestCase(QueryServerMixIn):
 
@@ -503,7 +506,15 @@ class FilterTestCase(QueryServerMixIn):
     def test_changes_filter(self):
         ''' should only return true for good docs '''
         if (0, 9, 0) <= COUCHDB_VERSION < (0, 10, 0):
-            ''' filters had been introduced in 0.10.0 '''
+            fun = functions['filter_basic']
+            self.qs.reset()
+            self.assertEqual(self.qs.add_fun(fun), True)
+            self.qs.send(['filter', [{'key': 'bam', 'good': True},
+                         {'foo': 'bar'}, {'good': True}], {'req': 'foo'}])
+            resp = self.qs.recv()
+            self.assertEqual(resp, {'error': 'unknown_command',
+                                    'reason': 'unknown command filter'})
+            self.assertEqual(self.qs.close(), 1)
         elif COUCHDB_VERSION >= (0, 10, 0):
             if COUCHDB_VERSION < (0, 11, 1):
                 fun = functions['filter_basic']
@@ -554,7 +565,14 @@ class UpdateTestCase(QueryServerMixIn):
     def test_update(self):
         ''' should return a doc and a resp body '''
         if (0, 9, 0) <= COUCHDB_VERSION < (0, 10, 0):
-            ''' updates had been introduced in 0.10.0 '''
+            fun = functions['update_basic']
+            self.qs.reset()
+            self.qs.send(['update', fun,
+                         {'foo': 'gnarly'}, {'method': 'POST'}])
+            resp = self.qs.recv()
+            self.assertEqual(resp, {'error': 'unknown_command',
+                                    'reason': 'unknown command update'})
+            self.assertEqual(self.qs.close(), 1)
         elif COUCHDB_VERSION >= (0, 10, 0):
             fun = functions['update_basic']
             if COUCHDB_VERSION < (0, 11, 0):
@@ -594,7 +612,6 @@ class ListTestCase(QueryServerMixIn):
 
     def test_list(self):
         ''' should run normal '''
-
         if (0, 9, 0) <= COUCHDB_VERSION < (0, 10, 0):
             fun = functions['list_simple_old']
             self.qs.reset()
@@ -745,9 +762,8 @@ class ListTestCase(QueryServerMixIn):
             self.qs.add_fun(fun)
             self.qs.send(['list', {'foo': 'bar'}, {'q': 'ok'}])
         elif COUCHDB_VERSION >= (0, 11, 0):
-            self.qs.send_ddoc(self.ddoc,
-                                    ['lists', 'chunky'],
-                                    [{'foo': 'bar'}, {'q': 'ok'}])
+            self.qs.send_ddoc(self.ddoc, ['lists', 'chunky'],
+                                         [{'foo': 'bar'}, {'q': 'ok'}])
         else:
             self.fail('Undefined test case for version %s'
                       % '.'.join(map(str, COUCHDB_VERSION)))
@@ -839,8 +855,7 @@ class CrushTestCase(QueryServerMixIn):
 
     def test_fatal(self):
         ''' should exit '''
-
-        if (0, 9, 0) <= COUCHDB_VERSION < (0, 10, 0):
+        if COUCHDB_VERSION < (0, 10, 0):
             fun = functions['fatal']
             self.qs.send(['show_doc', fun, {'foo': 'bar'}, {'q': 'ok'}])
             resp = self.qs.recv()
@@ -857,26 +872,26 @@ class CrushTestCase(QueryServerMixIn):
             self.assertEqual(resp, ['error', 'error_key', 'testing'])
         self.assertEqual(self.qs.close(), 1)
 
-class LegacyTestCases(unittest.TestCase):
 
+class LegacyTestCases(unittest.TestCase):
 
     def test_reset(self):
         input = StringIO('["reset"]\n')
         output = StringIO()
-        view.run(input=input, output=output)
+        view.run(input=input, output=output, version=COUCHDB_VERSION)
         self.assertEquals(output.getvalue(), 'true\n')
 
     def test_add_fun(self):
         input = StringIO('["add_fun", "def fun(doc): yield None, doc"]\n')
         output = StringIO()
-        view.run(input=input, output=output)
+        view.run(input=input, output=output, version=COUCHDB_VERSION)
         self.assertEquals(output.getvalue(), 'true\n')
 
     def test_map_doc(self):
         input = StringIO('["add_fun", "def fun(doc): yield None, doc"]\n'
                          '["map_doc", {"foo": "bar"}]\n')
         output = StringIO()
-        view.run(input=input, output=output)
+        view.run(input=input, output=output, version=COUCHDB_VERSION)
         self.assertEqual(output.getvalue(),
                          'true\n'
                          '[[[null, {"foo": "bar"}]]]\n')
@@ -885,7 +900,7 @@ class LegacyTestCases(unittest.TestCase):
         input = StringIO('["add_fun", "def fun(doc): yield doc[\\"test\\"], doc"]\n'
                          '["map_doc", {"test": "b\xc3\xa5r"}]\n')
         output = StringIO()
-        view.run(input=input, output=output)
+        view.run(input=input, output=output, version=COUCHDB_VERSION)
         self.assertEqual(output.getvalue(),
                          'true\n'
                          '[[["b\xc3\xa5r", {"test": "b\xc3\xa5r"}]]]\n')
@@ -912,11 +927,11 @@ class LegacyTestCases(unittest.TestCase):
                          '["map_doc", {"foo": "bar"}]\n' % fun)
         output = StringIO()
         view.run(input=input, output=output, version=COUCHDB_VERSION)
-        if (0, 9, 0) <= COUCHDB_VERSION < (0, 11, 0):
+        if COUCHDB_VERSION < (0, 11, 0):
             self.assertEqual(output.getvalue(), 'true\n'
                                                 '{"log": "[1, 2, 3]"}\n'
                                                 '[[[null, {"foo": "bar"}]]]\n')
-        elif COUCHDB_VERSION >= (0, 11, 0):
+        else:
             self.assertEqual(output.getvalue(), 'true\n'
                                                 '["log", "[1, 2, 3]"]\n'
                                                 '[[[null, {"foo": "bar"}]]]\n')
@@ -926,7 +941,7 @@ class LegacyTestCases(unittest.TestCase):
                           '["def fun(keys, values): return sum(values)"], '
                           '[[null, 1], [null, 2], [null, 3]]]\n')
         output = StringIO()
-        view.run(input=input, output=output)
+        view.run(input=input, output=output, version=COUCHDB_VERSION)
         self.assertEqual(output.getvalue(), '[true, [6]]\n')
 
     def test_reduce_with_logging(self):
@@ -935,10 +950,10 @@ class LegacyTestCases(unittest.TestCase):
                           '[[null, 1], [null, 2], [null, 3]]]\n')
         output = StringIO()
         view.run(input=input, output=output, version=COUCHDB_VERSION)
-        if (0, 9, 0) <= COUCHDB_VERSION < (0, 11, 0):
+        if COUCHDB_VERSION < (0, 11, 0):
             self.assertEqual(output.getvalue(), '{"log": "Summing (1, 2, 3)"}\n'
                                                 '[true, [6]]\n')
-        elif COUCHDB_VERSION >= (0, 11, 0):
+        else:
             self.assertEqual(output.getvalue(), '["log", "Summing (1, 2, 3)"]\n'
                                                 '[true, [6]]\n')
 
@@ -947,7 +962,7 @@ class LegacyTestCases(unittest.TestCase):
                           '["def fun(keys, values, rereduce): return sum(values)"], '
                           '[1, 2, 3]]\n')
         output = StringIO()
-        view.run(input=input, output=output)
+        view.run(input=input, output=output, version=COUCHDB_VERSION)
         self.assertEqual(output.getvalue(), '[true, [6]]\n')
 
 def suite():
