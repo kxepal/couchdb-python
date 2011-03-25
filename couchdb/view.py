@@ -30,7 +30,7 @@ log = logging.getLogger('couchdb.view')
 log.addHandler(NullHandler())
 
 def run(input=sys.stdin, output=sys.stdout, version=TRUNK):
-    r"""CouchDB view function handler implementation for Python.
+    r"""CouchDB view server implementation for Python.
 
     :param input: the readable file-like object to read input from
     :param output: the writable file-like object to write output to
@@ -44,8 +44,17 @@ def run(input=sys.stdin, output=sys.stdout, version=TRUNK):
 # Exceptions
 #
     class ViewServerException(Exception):
-
+        '''Base view server exception'''
         def encode(self):
+            '''Encodes error to valid output structure.
+
+            Returns:
+                For version lesser than 0.11.0 valid format is a dict with
+                structure:
+                {'error': id, 'reason': message}
+                Since 0.11.0 error format had changed to list:
+                ['error', id, message]
+            '''
             if COUCHDB_VERSION < (0, 11, 0):
                 id, reason = self.args
                 return {'error': id, 'reason': reason}
@@ -53,13 +62,13 @@ def run(input=sys.stdin, output=sys.stdout, version=TRUNK):
                 return ['error'] + list(self.args)
 
     class Error(ViewServerException):
-        pass
+        '''Non fatal error which doesn't initiate view server termitation.'''
 
     class FatalError(ViewServerException):
-        pass
+        '''Fatal error which termitates view server.'''
 
     class Forbidden(ViewServerException):
-
+        '''Non fatal error which signs operation access deny.'''
         def encode(self):
             return {'forbidden': self.args[0]}
 
@@ -68,6 +77,7 @@ def run(input=sys.stdin, output=sys.stdout, version=TRUNK):
 #
 
     def debug_dump_args(func):
+        ''''Decorator which traces function call and logs passed arguments.'''
         argnames = func.func_code.co_varnames[:func.func_code.co_argcount]
         fname = func.func_name
         def wrapper(*args,**kwargs):
@@ -84,6 +94,7 @@ def run(input=sys.stdin, output=sys.stdout, version=TRUNK):
 
     @debug_dump_args
     def respond(obj):
+        '''Writes json encoded object to view server output stream.'''
         try:
             obj = json.encode(obj)
         except ValueError, err:
@@ -99,6 +110,12 @@ def run(input=sys.stdin, output=sys.stdout, version=TRUNK):
             output.flush()
 
     def _log(message):
+        '''Logs message to CouchDB output stream.
+
+        Output format:
+            till 0.11.0 version: {"log": message}
+            since 0.11.0 version: ["log", message]
+        '''
         if COUCHDB_VERSION < (0, 11, 0):
             if message is None:
                 message = 'Error: attemting to log message of None'
@@ -157,10 +174,85 @@ def run(input=sys.stdin, output=sys.stdout, version=TRUNK):
         })
 
     def compile_func(funstr, ddoc=None):
+        '''Compile source code and extract function object from it.
+
+        Code compiled within special context which provides access to predefined
+        objects and functions:
+            Error: Non fatal view server exception.
+            FatalError: Fatal view server exception.
+            Forbidden: Non fatal view server exception for access control.
+            log: Method to log messages to view server output stream.
+            json: View server json package (simplejson, cjson or json)
+
+        If ddoc argument passed (since 0.11.0):
+            require: Code import helper stored in various document sections.
+                Not avaiable for map/reduce functions.
+                Since 1.1.0 avaiable for map functions if State.lib setted.
+
+        Useful for show/list functions:
+            provides: Register mime type handler.
+            register_type: Register new mime type.
+
+            Only for 0.9.x:
+                response_with
+
+            Since 0.10.0:
+                start: Initiate response with passed headers.
+                send: Sends single chunk to caller.
+                get_row: Gets next row from view result.
+
+        Arguments:
+            funstr: Python source code.
+            ddoc: Optional argument which must represent document as dict.
+
+        Returns:
+            Compiled function object.
+
+        Raises:
+            Error: View server error if compilation was not succeeded.
+        '''
         # context is defined below after all classes
         context.pop('require', None) # cleanup
         @debug_dump_args
         def require(name, module=None):
+            '''Extracts export statements from stored module within document.
+
+            Arguments:
+                name: Path to stored module throught document structure fields.
+
+            Returns:
+                Exported statements.
+
+            Example of stored module:
+                >>> class Validate(object):
+                >>>     def __init__(self, newdoc, olddoc, userctx):
+                >>>         self.newdoc = newdoc
+                >>>         self.olddoc = olddoc
+                >>>         self.userctx = userctx
+                >>>
+                >>>     def is_author():
+                >>>         return self.doc['author'] == self.userctx['name']
+                >>>
+                >>>     def is_admin():
+                >>>         return '_admin' in self.userctx['roles']
+                >>>
+                >>>     def unchanged(field):
+                >>>         assert (self.olddoc is not None
+                >>>                 and self.olddoc[field] == self.newdoc[field])
+                >>>
+                >>> exports['init'] = Validate
+            Example of importing exports:
+                >>> def validate_doc_update(newdoc, olddoc, userctx):
+                >>>     init_v = require('lib/validate')['init']
+                >>>     v = init_v(newdoc, olddoc, userctx)
+                >>>
+                >>>     if v.is_admin():
+                >>>         return True
+                >>>
+                >>>     v.unchanged('author')
+                >>>     v.unchanged('created_at')
+                >>>     return True
+            '''
             log.debug('Importing objects from %s', name)
             module = module or {}
             new_module = resolve_module(name.split('/'), module, ddoc)
@@ -201,6 +293,7 @@ def run(input=sys.stdin, output=sys.stdout, version=TRUNK):
 ################################################################################
 # Mimeparse
 #
+# TODO: Is there way to do same things with builtin modules?
 
     class Mimeparse(object):
         __slots__ = ()
@@ -232,7 +325,8 @@ def run(input=sys.stdin, output=sys.stdout, version=TRUNK):
             for parsed in parsed_ranges:
                 type, subtype, params = parsed
                 type_preq = type == base_type or '*' in [type, base_type]
-                subtype_preq = subtype == base_subtype or '*' in [subtype, base_subtype]
+                subtype_preq = subtype == base_subtype or '*' in [subtype,
+                                                                  base_subtype]
                 if type_preq and subtype_preq:
                     match_count = sum((1 for k, v in base_params.values()
                                       if k != 'q' and params.get(k) == v))
@@ -305,11 +399,46 @@ def run(input=sys.stdin, output=sys.stdout, version=TRUNK):
             del self.mimefuns[:]
 
         def register_type(self, key, *args):
+            '''Register mimetypes.
+
+            Predefined types:
+                all: */*
+                text: text/plain; charset=utf-8, txt
+                html: text/html; charset=utf-8
+                xhtml: application/xhtml+xml, xhtml
+                xml: application/xml, text/xml, application/x-xml
+                js: text/javascript, application/javascript,
+                    application/x-javascript
+                css: text/css
+                ics: text/calendar
+                csv: text/csv
+                rss: application/rss+xml
+                atom: application/atom+xml
+                yaml: application/x-yaml, text/yaml
+                multipart_form: multipart/form-data
+                url_encoded_form: application/x-www-form-urlencoded
+                json: application/json, text/x-json
+
+            Arguments:
+                key: Shorthand key for mimetypes. Actually you would like
+                    to use extension name associated with mime types e.g. js
+                *args: full quality names of mime types.
+
+            Example:
+                >>> register_type('png', 'image/png')
+            '''
             self.mimes_by_key[key] = args
             for item in args:
                 self.keys_by_mime[item] = key
 
         def provides(self, type, func):
+            '''Register mimetype handler which will be called when mimetype been
+            requested.
+
+            Arguments:
+                type: Mimetype.
+                func: Function object or any callable.
+            '''
             self.provides_used = True
             self.mimefuns.append((type, func))
 
@@ -326,7 +455,8 @@ def run(input=sys.stdin, output=sys.stdout, version=TRUNK):
                     mimekey = mimefun[0]
                     if self.mimes_by_key.get(mimekey) is not None:
                         supported_mimes.extend(self.mimes_by_key[mimekey])
-                self.resp_content_type = Mimeparse.best_match(supported_mimes, accept)
+                self.resp_content_type = Mimeparse.best_match(supported_mimes,
+                                                              accept)
             else:
                 bestkey = self.mimefuns[0][0]
             if bestkey is not None:
@@ -349,13 +479,32 @@ def run(input=sys.stdin, output=sys.stdout, version=TRUNK):
 #
 
     class State(object):
-        __slots__ = ('line_length', 'lib')
+        '''View server state holder.
+
+        Attributes:
+            lib: Shared module for views. Feature of 1.1.0 version.
+            functions: List of compiled functions.
+            functions_src: List of compiled functions source code.
+            query_config: Query config dictionary.
+        '''
+        __slots__ = ('line_length',)
         lib = None
         functions = []
         functions_src = []
         query_config = {}
 
         def reset(self, config=None):
+            '''Resets view server state.
+
+            Command:
+                reset
+
+            Arguments:
+                config: Optional dict argument to set up query config.
+
+            Returns:
+                True
+            '''
             del self.functions[:]
             self.query_config.clear()
             if config is not None:
@@ -364,6 +513,20 @@ def run(input=sys.stdin, output=sys.stdout, version=TRUNK):
 
         @debug_dump_args
         def add_fun(self, funstr):
+            '''Compiles and adds function to state cache.
+
+            Since 1.1.0 if add_lib command executed and lib is setted, allows
+            to adds require function to compilation context.
+
+            Command:
+                add_fun
+
+            Arguments:
+                funstr: Python function as source string.
+
+            Returns:
+                True
+            '''
             if (1, 1, 0) <= COUCHDB_VERSION <= TRUNK:
                 ddoc = {'views': {'lib': self.lib}}
                 self.functions.append(compile_func(funstr, ddoc))
@@ -374,6 +537,17 @@ def run(input=sys.stdin, output=sys.stdout, version=TRUNK):
 
         @debug_dump_args
         def add_lib(self, lib):
+            '''Add lib to state which could be used within views.
+
+            Command:
+                add_lib
+
+            Arguments:
+                lib: Python source code which used require function protocol.
+
+            Returns:
+                True
+            '''
             type(self).lib = lib;
             return True
 
@@ -388,6 +562,27 @@ def run(input=sys.stdin, output=sys.stdout, version=TRUNK):
 
         @debug_dump_args
         def map_doc(self, doc):
+            '''Apply avaiable map functions to document.
+
+            Command:
+                map_doc
+
+            Arguments:
+                doc: Document object as dict.
+
+            Returns:
+                List of key-value results for each applied map function.
+
+            Raises:
+                FatalError: If any Python exception occures due mapping.
+
+            Example of map function:
+                >>> def mapfun(doc):
+                >>>     doc_has_tags = isinstance(doc.get('tags'), list)
+                >>>     if doc['type'] == 'post' and doc_has_tags:
+                >>>         for tag in doc['tags']:
+                >>>             yield tag.lower(), 1
+            '''
             docid = doc.get('_id')
             log.debug('Running map functions for doc._id %s', docid)
             map_results = []
@@ -422,6 +617,28 @@ def run(input=sys.stdin, output=sys.stdout, version=TRUNK):
 
         @debug_dump_args
         def reduce(self, reduce_funs, kvs, rereduce=False):
+            '''Reduce mapping result.
+
+            Command:
+                reduce
+
+            Arguments:
+                reduce_funs: List of reduce functions source code.
+                kvs: List of key-value pairs.
+
+            Returns:
+                Two element list with True and reduction result.
+
+            Raises:
+                Error: If any Python exception occures.
+                       If reduce ouput is twise longer as State.line_length
+                       and reduce_limit is enabled in State.query_config.
+            Example of reduce function:
+                >>> def reducefun(keys, values):
+                >>>     return sum(values)
+                Also you may fill free to use builin functions instead:
+                >>> _sum
+            '''
             reductions = []
             keys, values = rereduce and (None, kvs) or zip(*kvs) or ([],[])
             args = (keys, values, rereduce)
@@ -453,6 +670,24 @@ def run(input=sys.stdin, output=sys.stdout, version=TRUNK):
 
         @debug_dump_args
         def rereduce(self, reduce_funs, values):
+            '''Rereduce mapping result
+
+            Command:
+                rereduce
+
+            Arguments:
+                reduce_funs: List of reduce functions source code.
+                values: List values.
+
+            Returns:
+                Two element list with True and rereduction result.
+
+            Raises:
+                Error: If any Python exception occures. View server
+                    exceptions (Error, FatalError, Forbidden) rethrowing as is.
+                    If reduce ouput is twise longer as State.line_length and
+                    reduce_limit is enabled in State.query_config.
+            '''
             return self.reduce(reduce_funs, values, rereduce=True)
 
     Views = Views()
@@ -461,6 +696,7 @@ def run(input=sys.stdin, output=sys.stdout, version=TRUNK):
 # Validate
 #
     class Validate(object):
+        '''Base class for validation commands.'''
         __slots__ = ()
 
         def handle_error(self, err, userctx):
@@ -483,6 +719,41 @@ def run(input=sys.stdin, output=sys.stdout, version=TRUNK):
             return 1
 
         def validate(self, func, *args):
+            '''Uses for validate_doc_update design function.
+
+            Introduced in 0.9.0 version.
+            Should raise Forbidden error to prevent document changes.
+            Assertion error counting same as Forbidden error.
+
+            Since 0.11.0 version there was added 4th argument: secobj,
+            which holds security information for current database.
+            As far as it haven't mentioned in most validate_doc_update examples
+            and this change could break old/ported code, this argument leaved
+            as optional.
+
+            Command:
+                validate
+
+            Arguments:
+                func: Validate_doc_update function.
+                    Till 0.11.0: function source code.
+                    Since 0.11.0: compiled function object.
+                newdoc: New document version as dict.
+                olddoc: Stored document version as dict.
+                userctx: User info dict.
+                secobj: Database security information dict.
+                    Used since 0.11.0 version. Optional.
+
+            Returns:
+                1 (number one)
+
+            Example of validate_doc_update function:
+                >>> def validate_doc_update(newdoc, olddoc, userctx, secobj):
+                >>>     # of course you should also check roles
+                >>>     if userctx['name'] not in secobj['admins']:
+                >>>         assert newdoc['author'] == userctx['name']
+                >>>     return True
+            '''
             if COUCHDB_VERSION < (0, 11, 0):
                 func = compile_func(func)
             if COUCHDB_VERSION >= (0, 11, 1):
@@ -497,6 +768,7 @@ def run(input=sys.stdin, output=sys.stdout, version=TRUNK):
 #
 
     class Filters(object):
+        '''Base class for filters commands.'''
         __slots__ = ()
 
         @debug_dump_args
@@ -512,6 +784,29 @@ def run(input=sys.stdin, output=sys.stdout, version=TRUNK):
             return [True, [bool(tuple(func(doc))) for doc in docs]]
 
         def filter(self, *args):
+            '''Used for filters design function set.
+
+            Introduced in 0.10.0 version.
+            Since 0.11.0 doesn't requires add_fun command proceeding before.
+            Since 0.11.1 doesn't expects userctx argument any more.
+
+            Command:
+                filter
+
+            Arguments:
+                func: Function object.
+                docs: List of documents each one of will be passed though filter.
+                req: Request info dict.
+                userctx: User info dict. Not used since 0.11.1 version.
+
+            Returns:
+                Two element list where first element is True and second is
+                list of booleans which marks is document passed filter or not.
+
+            Example of filter function:
+                >>> def filterfun(doc, req):
+                >>>     return doc['type'] == 'post'
+            '''
             if COUCHDB_VERSION < (0, 11, 0):
                 func = State.functions[0]
             else:
@@ -519,6 +814,24 @@ def run(input=sys.stdin, output=sys.stdout, version=TRUNK):
             return self.run_filter(func, *args)
 
         def filter_view(self, *args):
+            '''Used to apply filter function set to views.
+
+            Introduced in 1.1.0 version.
+
+            Command:
+                views
+
+            Arguments:
+                func: Map function object.
+                docs: List of documents.
+
+            Returns:
+                Two element list of True and list of booleans which marks is
+                view generated result for passed document or not.
+
+            Example would be same as view map function, just make call:
+                GET /db/_changes?filter=_view&view=design_name/view_name
+            '''
             return self.run_filter_view(*args)
 
     Filters = Filters()
@@ -528,6 +841,7 @@ def run(input=sys.stdin, output=sys.stdout, version=TRUNK):
 #
 
     class Render(object):
+        '''Base class for render commands. Used since 0.10.0 version.'''
         __slots__ = ('gotrow', 'lastrow')
         chunks = []
         startresp = {}
@@ -583,7 +897,7 @@ def run(input=sys.stdin, output=sys.stdout, version=TRUNK):
                     data = json.decode(line)
                 except ValueError, err:
                     log.exception('Error converting JSON to object: %s\n'
-                              'Reason: %s', line, err)
+                                  'Reason: %s', line, err)
                     raise FatalError('json_decode_error', str(err))
                 if data[0] == 'list_end':
                     self.lastrow = True
@@ -617,11 +931,12 @@ def run(input=sys.stdin, output=sys.stdout, version=TRUNK):
                     resp = Mime.run_provides(args[1])
                     resp = self.maybe_wrap_response(resp)
                     resp = self.apply_content_type(resp, Mime.resp_content_type)
-                if not isinstance(resp, (dict, basestring)):
+                if isinstance(resp, (dict, basestring)):
+                    return ['resp', self.maybe_wrap_response(resp)]
+                else:
                     log.debug('resp: %r ; type: %r', resp, type(resp))
                     raise Error('render_error',
                                 'undefined response from show function')
-                return ['resp', self.maybe_wrap_response(resp)]
             except Exception, err:
                 if args[0] is None and self.is_doc_request_path(args[1]):
                     raise Error('not_found', 'document not found')
@@ -640,11 +955,12 @@ def run(input=sys.stdin, output=sys.stdout, version=TRUNK):
                     raise Error('method_not_allowed',
                                 'update functions do not allow GET')
                 doc, resp = fun(*args)
-                if not isinstance(resp, (dict, basestring)):
+                if isinstance(resp, (dict, basestring)):
+                    return ['up', doc, self.maybe_wrap_response(resp)]
+                else:
                     log.debug('resp: %r ; type: %r', resp, type(resp))
                     raise Error('render_error',
                                 'undefined response from update function')
-                return ['up', doc, self.maybe_wrap_response(resp)]
             except ViewServerException:
                 raise
             except Exception, err:
@@ -673,6 +989,18 @@ def run(input=sys.stdin, output=sys.stdout, version=TRUNK):
                 raise Error('render_error', str(err))
 
         def list(self, *args):
+            '''Used for lists design function set.
+
+            Introduced in 0.10.0 version.
+
+            Command:
+                list
+
+            Arguments:
+                func: Compiled function object. Used since 0.11.0.
+                doc: Document object as dict.
+                req: Request dict.
+            '''
             if COUCHDB_VERSION < (0, 11, 0):
                 func = State.functions[0]
             else:
@@ -680,16 +1008,81 @@ def run(input=sys.stdin, output=sys.stdout, version=TRUNK):
             return self.run_list(func, *args)
 
         def show(self, func, *args):
+            '''Used for shows design function set.
+
+            Introduced in 0.10.0 version.
+
+            Command:
+                show
+
+            Arguments:
+                func: Function source string.
+                    Since 0.11.0 function object used instead of source string.
+                doc: Document object as dict.
+                req: Request info dict.
+
+            Example of show function:
+                >>> def show(doc, req):
+                >>>     return {
+                >>>         'code': 200,
+                >>>         'headers': {
+                >>>             'X-CouchDB-Python': '0.9.0'
+                >>>         },
+                >>>         'body': 'Hello, World!'
+                >>>     }
+
+            '''
             if COUCHDB_VERSION < (0, 11, 0):
                 func = compile_func(func)
             return self.run_show(func, *args)
 
         def update(self, func, *args):
+            '''Proceeds updates design function set.
+
+            Introduced in 0.10.0 version.
+
+            Command:
+                update
+
+            Arguments:
+                func: Function source string.
+                      Since 0.11.0 function object used instead of source string.
+                doc: Document object as dict.
+                req: Request info dict.
+
+            Returns:
+                Three element list: ["up", doc, response]
+                If the doc is None no document will be committed to the
+                database. If document an existing, it should already have an _id
+                set. If it doesn't exists it will be created.
+                Response object could be string or dict object, which
+                will be returned to caller.
+
+            Raises:
+                Error: If request method was not POST/PUT.
+                       If response is not dict object or basestring.
+
+            Example of update function:
+                >>> # http://wiki.apache.org/couchdb/Document_Update_Handlers
+                >>> def update(doc, req):
+                >>>     if not doc:
+                >>>         if 'id' in req:
+                >>>             # create new document
+                >>>             return [{'_id': req['id']}, 'New World']
+                >>>         # change nothing in database
+                >>>         return [None, 'Empty World']
+                >>>     doc['world'] = 'hello'
+                >>>     doc['edited_by'] = req.get('userCtx')
+                >>>     # update document in database
+                >>>     return [doc, "Hello, doc!"]
+                Update function must return two element set of doc and response.
+            '''
             if COUCHDB_VERSION < (0, 11, 0):
                 func = compile_func(func)
             return self.run_update(func, *args)
 
         def html_render_error(self, err, funstr):
+            '''obsolete'''
             import cgi
             return {
                 'body':''.join([
@@ -708,6 +1101,7 @@ def run(input=sys.stdin, output=sys.stdout, version=TRUNK):
 #
 
     class RenderOld(object):
+        '''Base class for render commands. Used only with 0.9.x versions.'''
         __slots__ = ()
         row_line = {}
 
@@ -753,7 +1147,6 @@ def run(input=sys.stdin, output=sys.stdout, version=TRUNK):
 
         @debug_dump_args
         def show_doc(self, funstr, doc, req=None):
-            log.debug('show_doc function: \n%s', funstr)
             func = compile_func(funstr)
             return self.render_function(func, [doc, req])
 
@@ -811,6 +1204,34 @@ def run(input=sys.stdin, output=sys.stdout, version=TRUNK):
 
         @debug_dump_args
         def ddoc(self, *_args):
+            '''Prepares proceeding of render/filter/validate functions.
+
+            Also holds cache of design documents, but ddoc must have to be
+            registered before proceeding.
+
+            Command:
+                ddoc
+
+            Arguments:
+                To put ddoc into cache:
+                    "new": String contant, sign of this operation.
+                    ddoc_id: Design document id.
+                    ddoc: Design document itself.
+                To call function from ddoc:
+                    ddoc_id: Design document id, holder of requested function.
+                    func_path: List of nodes by which request function could
+                        be found. First element of this list is ddoc command.
+                    func_args: List of function arguments.
+
+            Returns:
+                If ddoc putted into cache True will be returned.
+                If ddoc function called returns it's result if any exists.
+                For example, lists doesn't explicity returns any response.
+
+            Raises:
+                FatalError: If tried to work with uncached design document.
+                            If unknown ddoc command passed.
+            '''
             dispatch = self.dispatcher()
             args = list(_args)
             ddoc_id = args.pop(0)
@@ -837,7 +1258,6 @@ def run(input=sys.stdin, output=sys.stdout, version=TRUNK):
                     if type(func) is not FunctionType:
                         func = compile_func(func, ddoc)
                 return dispatch[cmd](func, *func_args)
-            return 1
 
     DDoc = DDoc()
 
@@ -1017,11 +1437,12 @@ def main():
                     ))
                 log.addHandler(handler)
             elif option in ['--couchdb-version']:
-                version = value.split('.')
-                while len(version) < 3:
-                    version.append(0)
-                _run_version = '.'.join(version[:3])
-                version = tuple(map(int, version[:3]))
+                if value.lower() != 'trunk':
+                    version = value.split('.')
+                    while len(version) < 3:
+                        version.append(0)
+                    _run_version = '.'.join(version[:3])
+                    version = tuple(map(int, version[:3]))
         if message:
             sys.stdout.write(message)
             sys.stdout.flush()
