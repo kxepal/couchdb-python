@@ -59,6 +59,12 @@ class TestFuncsMixIn(object):
 class ViewTestCase(QueryServerMixIn, TestFuncsMixIn):
 
     def functions(self):
+        def emit_none(doc):
+            pass
+
+        def not_emit_but_return(doc):
+            return [['foo', doc['a']]]
+
         def emit_twise(doc):
             yield 'foo', doc['a']
             yield 'bar', doc['a']
@@ -125,6 +131,20 @@ class ViewTestCase(QueryServerMixIn, TestFuncsMixIn):
         self.assertEqual(rows[0][0], ['foo', 'b'])
         self.assertEqual(rows[0][1], ['bar', 'b'])
         self.assertEqual(rows[1][0], ['baz', 'b'])
+
+    def test_run_map_fun_that_do_nothing(self):
+        ''' should not fail if map func do nothing '''
+        self.qs.reset()
+        self.assertEqual(self.qs.run(['add_fun', self.funs['emit_none']]), True)
+        rows = self.qs.run(['map_doc', {'_id': 'test_doc', 'a': 'b'}])
+        self.assertEqual(rows, [[]])
+
+    def test_run_map_funs_that_is_not_generator(self):
+        ''' should allow return value instead of generation '''
+        self.qs.reset()
+        self.assertEqual(self.qs.run(['add_fun', self.funs['not_emit_but_return']]), True)
+        rows = self.qs.run(['map_doc', {'_id': 'test_doc', 'a': 'b'}])
+        self.assertEqual(rows[0][0], ['foo', 'b'])
 
     def test_documents_seal(self):
         ''' should not allow cascade document changes within map funs '''

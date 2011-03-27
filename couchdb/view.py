@@ -592,7 +592,7 @@ def run(input=sys.stdin, output=sys.stdout, version=TRUNK):
             orig_doc = doc.copy()
             for i, function in enumerate(State.functions):
                 try:
-                    result = [[key, value] for key, value in function(doc)]
+                    result = [[key, value] for key, value in function(doc) or []]
                 except ViewServerException:
                     raise
                 except Exception, err:
