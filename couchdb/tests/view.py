@@ -432,8 +432,8 @@ class ShowTestCase(QueryServerMixIn, TestFuncsMixIn):
             self.qs.send(['show_doc', fun,
                          {'title': 'best ever', 'body': 'doc body'}])
             resp = self.qs.recv()
-            self.assertEqual(resp['error'], 'NameError')
-            self.assertEqual(self.qs.close(), 1)
+            self.assertEqual(resp['error'], 'render_error')
+            self.assertEqual(self.qs.close(), 0)
 
         def test_versions_since_0_10_0_till_0_11_0():
             fun = self.funs['show_with_require']
@@ -488,8 +488,8 @@ class ShowTestCase(QueryServerMixIn, TestFuncsMixIn):
             self.qs.send(['show_doc', fun,
                          {'title': 'best ever', 'body': 'doc body'}])
             resp = self.qs.recv()
-            self.assertEqual(resp['error'], 'NameError')
-            self.assertEqual(self.qs.close(), 1)
+            self.assertEqual(resp['error'], 'render_error')
+            self.assertEqual(self.qs.close(), 0)
 
         def test_versions_since_0_10_0_till_0_11_0():
             fun = self.funs['show_with_require']
