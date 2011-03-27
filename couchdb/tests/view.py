@@ -140,7 +140,7 @@ class ViewTestCase(QueryServerMixIn, TestFuncsMixIn):
         self.assertEqual(rows, [[]])
 
     def test_run_map_funs_that_is_not_generator(self):
-        ''' should allow return value instead of generation '''
+        ''' should allow return value instead of generate it '''
         self.qs.reset()
         self.assertEqual(self.qs.run(['add_fun', self.funs['not_emit_but_return']]), True)
         rows = self.qs.run(['map_doc', {'_id': 'test_doc', 'a': 'b'}])
