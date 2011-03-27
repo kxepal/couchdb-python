@@ -328,7 +328,7 @@ def run(input=sys.stdin, output=sys.stdout, version=TRUNK):
                 subtype_preq = subtype == base_subtype or '*' in [subtype,
                                                                   base_subtype]
                 if type_preq and subtype_preq:
-                    match_count = sum((1 for k, v in base_params.values()
+                    match_count = sum((1 for k, v in base_params.items()
                                       if k != 'q' and params.get(k) == v))
                     fitness = type == base_type and 100 or 0
                     fitness += subtype == base_subtype and 10 or 0
@@ -344,7 +344,7 @@ def run(input=sys.stdin, output=sys.stdout, version=TRUNK):
         def best_match(self, supported, header):
             weighted = []
             for i, item in enumerate(supported):
-                weighted.append(self.fitness_and_quality(item, header), i, item)
+                weighted.append([self.fitness_and_quality(item, header), i, item])
             weighted.sort()
             return weighted[-1][0][1] and weighted[-1][2] or ''
 
@@ -439,16 +439,18 @@ def run(input=sys.stdin, output=sys.stdout, version=TRUNK):
                 type: Mimetype.
                 func: Function object or any callable.
             '''
-            self.provides_used = True
             self.mimefuns.append((type, func))
 
         def run_provides(self, req):
             supported_mimes = []
             bestfun = None
             bestkey = None
-            accept = req.headers['Accept']
-            if req.query and req.query.format:
-                bestkey = req.query.format
+
+            accept = None
+            if 'headers' in req:
+                accept = req['headers'].get('Accept')    
+            if 'query' in req and 'format' in req['query']:
+                bestkey = req['query']['format']
                 self.resp_content_type = self.mimes_by_key[bestkey][0]
             elif accept:
                 for mimefun in reversed(self.mimefuns):
@@ -457,6 +459,7 @@ def run(input=sys.stdin, output=sys.stdout, version=TRUNK):
                         supported_mimes.extend(self.mimes_by_key[mimekey])
                 self.resp_content_type = Mimeparse.best_match(supported_mimes,
                                                               accept)
+                bestkey = self.keys_by_mime.get(self.resp_content_type)
             else:
                 bestkey = self.mimefuns[0][0]
             if bestkey is not None:
@@ -467,7 +470,7 @@ def run(input=sys.stdin, output=sys.stdout, version=TRUNK):
             if bestfun is not None:
                 return bestfun()
             supported_types = [', '.join(value) or key
-                               for key, value in self.mimes_by_key.values()]
+                               for key, value in self.mimes_by_key.items()]
             raise Error('not_acceptable',
                         'Content-Type %s not supported, try one of:\n'
                         '%s' % (accept or bestkey, ', '.join(supported_types)))
@@ -923,8 +926,9 @@ def run(input=sys.stdin, output=sys.stdout, version=TRUNK):
                 resp = fun(*args) or {}
                 if self.chunks:
                     resp = self.maybe_wrap_response(resp)
-                    resp['headers'] = resp['headers'] or {};
-                    resp.headers.update(self.startresp)
+                    if not 'headers' in resp:
+                        resp['headers'] = {}
+                    resp['headers'].update(self.startresp)
                     resp['body'] = ''.join(self.chunks) + resp.get('body', '')
                     self.reset_list()
                 if Mime.provides_used:
@@ -1113,7 +1117,7 @@ def run(input=sys.stdin, output=sys.stdout, version=TRUNK):
                     return Render.maybe_wrap_response(resp)
                 else:
                     raise Error('render_error', 'undefined response from render'
-                                                'function: %s' % resp)
+                                                ' function: %s' % resp)
             except ViewServerException:
                 raise
             except Exception, err:
@@ -1125,17 +1129,21 @@ def run(input=sys.stdin, output=sys.stdout, version=TRUNK):
         def response_with(self, req, responders):
             best_mime = 'text/plain'
             best_key = None
-            accept = req.get('Accept', None)
-            if accept is not None and not 'format' in req['query']:
+            if 'headers' in req:
+                accept = req['headers'].get('Accept')
+            else:
+                accept = None
+            query = req.get('query', {})
+            if accept is not None and 'format' not in query:
                 provides = []
                 for key in responders:
                     if key in Mime.mimes_by_key:
-                        provides.append(Mime.mimes_by_key[key])
-                best_mime = Mimeparse.best_match(Mime.mimes_by_key[key], accept)
-                best_key = Mime.keys_by_mime[best_mime]
+                        provides += list(Mime.mimes_by_key[key])
+                best_mime = Mimeparse.best_match(provides, accept)
+                best_key = Mime.keys_by_mime.get(best_mime)
             else:
-                best_key = req['query'].get('format')
-            rfunc = responders.get(best_key or responders.get('fallback') or 'html')
+                best_key = query.get('format')
+            rfunc = responders.get(best_key or responders.get('fallback', 'html'))
             if rfunc is not None:
                 resp = Render.maybe_wrap_response(rfunc())
                 if not 'headers' in resp:

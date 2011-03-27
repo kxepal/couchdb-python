@@ -52,7 +52,7 @@ class TestFuncsMixIn(object):
         if cache:
             return cache
         ns = getattr(self, 'functions', lambda: {})()
-        cache = dict([(k, textwrap.dedent(inspect.getsource(v))) 
+        cache = dict([(k, textwrap.dedent(inspect.getsource(v)))
                       for k, v in ns.items() if k != 'self'])
         return cache
 
@@ -344,6 +344,33 @@ class ShowTestCase(QueryServerMixIn, TestFuncsMixIn):
             stuff = require('lib/utils.py')
             return ' - '.join([stuff['title'], stuff['body']])
 
+        def show_provides_old(doc, req):
+            def html():
+                return '<html><body>%s</body></html>' % doc['_id']
+            def xml():
+                return '<root><doc id="%s" /></root>' % doc['_id']
+            def foo():
+                return 'foo? bar! bar!'
+            register_type('foo', 'application/foo', 'application/x-foo')
+            return response_with(req, {
+                'html': html,
+                'xml': xml,
+                'foo': foo,
+                'fallback': 'html'
+            })
+
+        def show_provides(doc, req):
+            def html():
+                return '<html><body>%s</body></html>' % doc['_id']
+            def xml():
+                return '<root><doc id="%s" /></root>' % doc['_id']
+            def foo():
+                return 'foo? bar! bar!'
+            register_type('foo', 'application/foo', 'application/x-foo')
+            provides('html', html)
+            provides('xml', xml)
+            provides('foo', foo)
+
         return locals()
 
     def test_show(self):
@@ -553,6 +580,152 @@ class ShowTestCase(QueryServerMixIn, TestFuncsMixIn):
                 'body': 'best ever - doc body'
             }]
             self.assertEqual(resp, valid_resp)
+
+        if COUCHDB_VERSION < (0, 9, 0):
+            test_versions_before_0_9_0()
+        elif COUCHDB_VERSION < (0, 10, 0):
+            test_versions_since_0_9_0_till_0_10_0()
+        elif COUCHDB_VERSION < (0, 11, 0):
+            test_versions_since_0_10_0_till_0_11_0()
+        else:
+            test_for_0_11_0_version_and_later()
+
+    def test_show_provides_match(self):
+        ''' should match mime type '''
+        def test_versions_before_0_9_0():
+            fun = self.funs['show_headers']
+            self.qs.send(['show_doc', fun,
+                         {'title': 'best ever', 'body': 'doc body'}, {}])
+            resp = self.qs.recv()
+            self.assertEqual(resp, {'error': 'unknown_command',
+                                    'reason': 'unknown command show_doc'})
+
+        def test_versions_since_0_9_0_till_0_10_0():
+            doc = {'_id': 'couch'}
+            req = {'headers': {'Accept': 'text/html,application/atom+xml; q=0.9'}}
+            fun = self.funs['show_provides_old']
+            self.qs.send(['show_doc', fun, doc, req])
+            resp = self.qs.recv()
+            self.assertTrue('text/html' in resp['headers']['Content-Type'])
+            self.assertEqual(resp['body'], '<html><body>couch</body></html>')
+
+        def test_versions_since_0_10_0_till_0_11_0():
+            doc = {'_id': 'couch'}
+            req = {'headers': {'Accept': 'text/html,application/atom+xml; q=0.9'}}
+            fun = self.funs['show_provides']
+            self.qs.send(['show', fun, doc, req])
+            token, resp = self.qs.recv()
+            self.assertEqual(token, 'resp')
+            self.assertTrue('text/html' in resp['headers']['Content-Type'])
+            self.assertEqual(resp['body'], '<html><body>couch</body></html>')
+
+        def test_for_0_11_0_version_and_later():
+            doc = {'_id': 'couch'}
+            req = {'headers': {'Accept': 'text/html,application/atom+xml; q=0.9'}}
+            fun = self.funs['show_provides']
+            ddoc = make_ddoc(['shows', 'provides'], fun)
+            self.qs.teach_ddoc(ddoc)
+            self.qs.send_ddoc(ddoc, ['shows', 'provides'], [doc, req])
+            token, resp = self.qs.recv()
+            self.assertEqual(token, 'resp')
+            self.assertTrue('text/html' in resp['headers']['Content-Type'])
+            self.assertEqual(resp['body'], '<html><body>couch</body></html>')
+
+        if COUCHDB_VERSION < (0, 9, 0):
+            test_versions_before_0_9_0()
+        elif COUCHDB_VERSION < (0, 10, 0):
+            test_versions_since_0_9_0_till_0_10_0()
+        elif COUCHDB_VERSION < (0, 11, 0):
+            test_versions_since_0_10_0_till_0_11_0()
+        else:
+            test_for_0_11_0_version_and_later()
+
+    def test_show_provides_fallback(self):
+        ''' should fallback on the first one '''
+        def test_versions_before_0_9_0():
+            fun = self.funs['show_headers']
+            self.qs.send(['show_doc', fun,
+                         {'title': 'best ever', 'body': 'doc body'}, {}])
+            resp = self.qs.recv()
+            self.assertEqual(resp, {'error': 'unknown_command',
+                                    'reason': 'unknown command show_doc'})
+
+        def test_versions_since_0_9_0_till_0_10_0():
+            doc = {'_id': 'couch'}
+            req = {'headers': {'Accept': 'application/x-foo, application/xml'}}
+            fun = self.funs['show_provides_old']
+            self.qs.send(['show_doc', fun, doc, req])
+            resp = self.qs.recv()
+            self.assertEqual('application/xml', resp['headers']['Content-Type'])
+            self.assertEqual(resp['body'], '<root><doc id="couch" /></root>')
+
+        def test_versions_since_0_10_0_till_0_11_0():
+            doc = {'_id': 'couch'}
+            req = {'headers': {'Accept': 'application/x-foo, application/xml'}}
+            fun = self.funs['show_provides']
+            self.qs.send(['show', fun, doc, req])
+            token, resp = self.qs.recv()
+            self.assertEqual(token, 'resp')
+            self.assertEqual('application/xml', resp['headers']['Content-Type'])
+            self.assertEqual(resp['body'], '<root><doc id="couch" /></root>')
+
+        def test_for_0_11_0_version_and_later():
+            doc = {'_id': 'couch'}
+            req = {'headers': {'Accept': 'application/x-foo, application/xml'}}
+            fun = self.funs['show_provides']
+            ddoc = make_ddoc(['shows', 'provides'], fun)
+            self.qs.teach_ddoc(ddoc)
+            self.qs.send_ddoc(ddoc, ['shows', 'provides'], [doc, req])
+            token, resp = self.qs.recv()
+            self.assertEqual(token, 'resp')
+            self.assertEqual('application/xml', resp['headers']['Content-Type'])
+            self.assertEqual(resp['body'], '<root><doc id="couch" /></root>')
+
+        if COUCHDB_VERSION < (0, 9, 0):
+            test_versions_before_0_9_0()
+        elif COUCHDB_VERSION < (0, 10, 0):
+            test_versions_since_0_9_0_till_0_10_0()
+        elif COUCHDB_VERSION < (0, 11, 0):
+            test_versions_since_0_10_0_till_0_11_0()
+        else:
+            test_for_0_11_0_version_and_later()
+
+    def test_show_provides_mismatch(self):
+        ''' should provides mime matcher without a match '''
+        def test_versions_before_0_9_0():
+            fun = self.funs['show_headers']
+            self.qs.send(['show_doc', fun,
+                         {'title': 'best ever', 'body': 'doc body'}, {}])
+            resp = self.qs.recv()
+            self.assertEqual(resp, {'error': 'unknown_command',
+                                    'reason': 'unknown command show_doc'})
+
+        def test_versions_since_0_9_0_till_0_10_0():
+            doc = {'_id': 'couch'}
+            req = {'headers': {'Accept': 'text/monkeys'}}
+            fun = self.funs['show_provides_old']
+            self.qs.send(['show_doc', fun, doc, req])
+            resp = self.qs.recv()
+            #self.assertTrue('text/html' in resp['headers']['Content-Type']) ???
+            self.assertEqual(resp['body'], '<html><body>couch</body></html>')
+
+        def test_versions_since_0_10_0_till_0_11_0():
+            doc = {'_id': 'couch'}
+            req = {'headers': {'Accept': 'text/monkeys'}}
+            fun = self.funs['show_provides']
+            self.qs.send(['show', fun, doc, req])
+            resp = self.qs.recv()
+            self.assertEqual(resp['error'], 'not_acceptable')
+
+        def test_for_0_11_0_version_and_later():
+            doc = {'_id': 'couch'}
+            req = {'headers': {'Accept': 'text/monkeys'}}
+            fun = self.funs['show_provides']
+            ddoc = make_ddoc(['shows', 'provides'], fun)
+            self.qs.teach_ddoc(ddoc)
+            self.qs.send_ddoc(ddoc, ['shows', 'provides'], [doc, req])
+            resp = self.qs.recv()
+            self.assertEqual(resp[:2], ['error', 'not_acceptable'])
 
         if COUCHDB_VERSION < (0, 9, 0):
             test_versions_before_0_9_0()
