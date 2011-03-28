@@ -235,6 +235,10 @@ class ValidateTestCase(QueryServerMixIn, TestFuncsMixIn):
             if newdoc.get('bad', False):
                 raise Forbidden('bad doc')
 
+        def validate_via_assert(newdoc, olddoc, userctx):
+            assert olddoc['author'] == newdoc['author'], \
+                   'changing author is not allowed'
+
         return locals()
 
     def setUp(self):
@@ -346,6 +350,42 @@ class ValidateTestCase(QueryServerMixIn, TestFuncsMixIn):
             test_for_0_11_0_version()
         else:
             test_for_0_11_1_version_and_later()
+
+
+    def test_validate_via_assert(self):
+        ''' should track assertion error as forbidden '''
+        def test_versions_before_0_9_0():
+            fun = self.funs['validate_via_assert']
+            self.qs.send(['validate', fun,
+                          {'author': 'Mike'}, {'author': 'John'}, {}])
+            resp = self.qs.recv()
+            self.assertEqual(resp, {'error': 'unknown_command',
+                                    'reason': 'unknown command validate'})
+            self.assertEqual(self.qs.close(), 1)
+
+        def test_versions_since_0_9_0_till_0_11_0():
+            fun = self.funs['validate_via_assert']
+            self.qs.send(['validate', fun,
+                          {'author': 'Mike'}, {'author': 'John'}, {}])
+            resp = self.qs.recv()
+            self.assertEqual(resp, {'forbidden': 'changing author is not allowed'})
+
+        def test_for_0_11_0_version_and_later():
+            fun = self.funs['validate_via_assert']
+            self.ddoc = make_ddoc(['validate_doc_update'], fun)
+            self.qs.teach_ddoc(self.ddoc)
+            self.qs.send_ddoc(self.ddoc, ['validate_doc_update'],
+                                         [{'author': 'Mike'}, {'author': 'John'},
+                                          {}])
+            resp = self.qs.recv()
+            self.assertEqual(resp, {'forbidden': 'changing author is not allowed'})
+
+        if COUCHDB_VERSION < (0, 9, 0):
+            test_versions_before_0_9_0()
+        elif COUCHDB_VERSION < (0, 11, 0):
+            test_versions_since_0_9_0_till_0_11_0()
+        else:
+            test_for_0_11_0_version_and_later()
 
 
 class ShowTestCase(QueryServerMixIn, TestFuncsMixIn):
