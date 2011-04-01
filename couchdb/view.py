@@ -129,14 +129,19 @@ def run(input=sys.stdin, output=sys.stdout, version=TRUNK):
 
     @debug_dump_args
     def resolve_module(names, mod, root=None):
+        def helper():
+            return ('\n    id: %r'
+                    '\n    names: %r'
+                    '\n    parent: %r'
+                    '\n    current: %r'
+                    '\n    root: %r') % (id, names, parent, current, root)
         id = mod.get('id')
         parent = mod.get('parent')
         current = mod.get('current')
         if not names:
             if not isinstance(current, basestring):
                 raise Error('invalid_require_path',
-                            'Must require Python string,'
-                            ' not\n%r' % current)
+                            'Must require Python string, not\n%r' % current)
             return {
                 'current': current,
                 'parent': parent,
@@ -147,30 +152,37 @@ def run(input=sys.stdin, output=sys.stdout, version=TRUNK):
         if n == '..':
             if parent is None or parent.get('parent') is None:
                 raise Error('invalid_require_path',
-                            'Object has no parent %r' % current)
+                            'Object %r has no parent.' % id + helper())
             return resolve_module(names, {
-                'id': mod['id'][:mod['id'].rfind('/')],
-                'parent': mod['parent']['parent'].get('parent'),
-                'current': mod['parent']['parent'].get('current')
+                'id': id[:id.rfind('/')],
+                'parent': parent['parent'].get('parent'),
+                'current': parent['parent'].get('current')
             })
         elif n == '.':
             if parent is None:
                 raise Error('invalid_require_path',
-                            'Object has no parent %r' % current)
+                            'Object %r has no parent.' % id + helper())
             return resolve_module(names, {
                 'id': id,
-                'parent': mod['parent'].get('parent'),
-                'current': mod['parent'].get('current'),
+                'parent': parent.get('parent'),
+                'current': parent.get('current'),
             })
-        elif root:
-            mod = {'current': root}
-        if not n in mod['current']:
+        elif not n:
             raise Error('invalid_require_path',
-                        'Object has no property %s' % n)
+                        'Required path shouldn\'t starts with slash character'
+                        ' or contains sequence of slashes.' + helper())
+        elif root:
+            mod, current = {'current': root}, root
+        if current is None:
+            raise Error('invalid_require_path',
+                        'Required module missing.' + helper())
+        if not n in current:
+            raise Error('invalid_require_path',
+                        'Object %r has no property %r' % (id, n) + helper())
         return resolve_module(names, {
-            'current': mod['current'][n],
+            'current': current[n],
             'parent': mod,
-            'id': (mod.get(id) is not None) and (mod['id'] + '/' + n) or n
+            'id': (id is not None) and (id + '/' + n) or n
         })
 
     def _require(ddoc):
