@@ -1275,7 +1275,11 @@ def run(input=sys.stdin, output=sys.stdout, version=TRUNK):
                                      'unknown ddoc command `%s`' % cmd)
                 point = ddoc
                 for item in fun_path:
-                    prev, point = point, point[item]
+                    prev, point = point, point.get(item)
+                    if point is None:
+                        raise Error('not_found',
+                                    'missing %s function %s on design doc %s'
+                                    '' % (cmd, item, ddoc_id))
                 else:
                     func = point
                     if type(func) is not FunctionType:
