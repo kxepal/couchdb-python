@@ -173,46 +173,7 @@ def run(input=sys.stdin, output=sys.stdout, version=TRUNK):
             'id': (mod.get(id) is not None) and (mod['id'] + '/' + n) or n
         })
 
-    def compile_func(funstr, ddoc=None):
-        '''Compile source code and extract function object from it.
-
-        Code compiled within special context which provides access to predefined
-        objects and functions:
-            Error: Non fatal view server exception.
-            FatalError: Fatal view server exception.
-            Forbidden: Non fatal view server exception for access control.
-            log: Method to log messages to view server output stream.
-            json: View server json package (simplejson, cjson or json)
-
-        If ddoc argument passed (since 0.11.0):
-            require: Code import helper stored in various document sections.
-                Not avaiable for map/reduce functions.
-                Since 1.1.0 avaiable for map functions if State.lib setted.
-
-        Useful for show/list functions:
-            provides: Register mime type handler.
-            register_type: Register new mime type.
-
-            Only for 0.9.x:
-                response_with
-
-            Since 0.10.0:
-                start: Initiate response with passed headers.
-                send: Sends single chunk to caller.
-                get_row: Gets next row from view result.
-
-        Arguments:
-            funstr: Python source code.
-            ddoc: Optional argument which must represent document as dict.
-
-        Returns:
-            Compiled function object.
-
-        Raises:
-            Error: View server error if compilation was not succeeded.
-        '''
-        # context is defined below after all classes
-        context.pop('require', None) # cleanup
+    def _require(ddoc):
         @debug_dump_args
         def require(name, module=None):
             '''Extracts export statements from stored module within document.
@@ -270,11 +231,53 @@ def run(input=sys.stdin, output=sys.stdout, version=TRUNK):
                 raise Error('compilation_error', '%s:\n%s' % (err, source))
             else:
                 return globals_['exports']
+        return require
+
+    def compile_func(funstr, ddoc=None):
+        '''Compile source code and extract function object from it.
+
+        Code compiled within special context which provides access to predefined
+        objects and functions:
+            Error: Non fatal view server exception.
+            FatalError: Fatal view server exception.
+            Forbidden: Non fatal view server exception for access control.
+            log: Method to log messages to view server output stream.
+            json: View server json package (simplejson, cjson or json)
+
+        If ddoc argument passed (since 0.11.0):
+            require: Code import helper stored in various document sections.
+                Not avaiable for map/reduce functions.
+                Since 1.1.0 avaiable for map functions if State.lib setted.
+
+        Useful for show/list functions:
+            provides: Register mime type handler.
+            register_type: Register new mime type.
+
+            Only for 0.9.x:
+                response_with
+
+            Since 0.10.0:
+                start: Initiate response with passed headers.
+                send: Sends single chunk to caller.
+                get_row: Gets next row from view result.
+
+        Arguments:
+            funstr: Python source code.
+            ddoc: Optional argument which must represent document as dict.
+
+        Returns:
+            Compiled function object.
+
+        Raises:
+            Error: View server error if compilation was not succeeded.
+        '''
+        # context is defined below after all classes
+        context.pop('require', None) # cleanup
         log.debug('Compiling code to function:\n%s', funstr)
         funstr = BOM_UTF8 + funstr.encode('utf-8')
         globals_ = {}
         if ddoc is not None:
-            context['require'] = require
+            context['require'] = _require(ddoc)
         try:
             # compile + exec > exec
             bytecode = compile(funstr, '<string>', 'exec')
@@ -448,7 +451,7 @@ def run(input=sys.stdin, output=sys.stdout, version=TRUNK):
 
             accept = None
             if 'headers' in req:
-                accept = req['headers'].get('Accept')    
+                accept = req['headers'].get('Accept')
             if 'query' in req and 'format' in req['query']:
                 bestkey = req['query']['format']
                 self.resp_content_type = self.mimes_by_key[bestkey][0]
