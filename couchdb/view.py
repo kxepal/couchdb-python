@@ -1263,11 +1263,12 @@ def run(input=sys.stdin, output=sys.stdout, version=TRUNK):
                                      'unknown ddoc command `%s`' % cmd)
                 point = ddoc
                 for item in fun_path:
-                    point = point[item]
+                    prev, point = point, point[item]
                 else:
                     func = point
                     if type(func) is not FunctionType:
                         func = compile_func(func, ddoc)
+                        prev[item] = func
                 return dispatch[cmd](func, *func_args)
 
     DDoc = DDoc()
