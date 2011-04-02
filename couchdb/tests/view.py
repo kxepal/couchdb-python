@@ -797,20 +797,12 @@ class ShowTestCase(QueryServerMixIn, TestFuncsMixIn):
             test_for_0_11_0_version_and_later()
 
     def test_missing_show_function(self):
-        def test_versions_before_0_10_0():
+        def test_versions_before_0_11_0():
             fun = self.funs['show_provides']
             ddoc = make_ddoc(['shows', 'provides'], fun)
             resp = self.qs.teach_ddoc(ddoc)
             self.assertEqual(resp, {'error': 'unknown_command',
                                     'reason': 'unknown command ddoc'})
-            self.assertEqual(self.qs.close(), 1)
-
-        def test_versions_since_0_10_0_till_0_11_0():
-            fun = self.funs['show_provides']
-            ddoc = make_ddoc(['shows', 'provides'], fun)
-            resp = self.qs.teach_ddoc(ddoc)
-            self.assertEqual(resp, ['error', 'unknown_command',
-                                    'unknown command ddoc'])
             self.assertEqual(self.qs.close(), 1)
 
         def test_for_0_11_0_version_and_later():
@@ -825,10 +817,8 @@ class ShowTestCase(QueryServerMixIn, TestFuncsMixIn):
             self.assertEqual(type, 'not_found')
             self.assertEqual(self.qs.close(), 0)
 
-        if COUCHDB_VERSION < (0, 10, 0):
-            test_versions_before_0_10_0()
-        elif COUCHDB_VERSION < (0, 11, 0):
-            test_versions_since_0_10_0_till_0_11_0()
+        if COUCHDB_VERSION < (0, 11, 0):
+            test_versions_before_0_11_0()
         else:
             test_for_0_11_0_version_and_later()
 
