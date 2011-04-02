@@ -223,6 +223,78 @@ class ViewTestCase(QueryServerMixIn, TestFuncsMixIn):
         else:
             test_for_0_11_0_version_and_later()
 
+    def test_allows_imports_at_function_top_level(self):
+        fun = '''
+        import datetime
+        def mapfun(doc, datetime=datetime):
+          date = datetime.datetime(2010, 02, 14, 02, 31, 30)
+          yield doc['_id'], date.isoformat()
+        '''
+        self.assertEqual(self.qs.run(['add_fun', textwrap.dedent(fun)]), True)
+        rows = self.qs.run(['map_doc', {'_id': 'foo'}])
+        self.assertEqual(rows[0][0], ['foo', '2010-02-14T02:31:30'])
+
+    def test_multiple_functions_definition_cause_error(self):
+        def test_before_0_11_0_version():
+            fun = '''
+            def helper():
+              return "bar"
+
+            def mapfun(doc, helper=helper):
+              yield doc['_id'], helper()
+
+            '''
+            resp = self.qs.run(['add_fun', textwrap.dedent(fun)])
+            self.assertEqual(resp['error'], 'compilation_error')
+            self.assertEqual(self.qs.close(), 0)
+
+        def test_for_0_11_0_version_and_later():
+            fun = '''
+            def helper():
+              return "bar"
+
+            def mapfun(doc, helper=helper):
+              yield doc['_id'], helper()
+
+            '''
+            resp = self.qs.run(['add_fun', textwrap.dedent(fun)])
+            self.assertEqual(resp[0], 'error')
+            self.assertEqual(resp[1], 'compilation_error')
+            self.assertEqual(self.qs.close(), 0)
+
+        if COUCHDB_VERSION < (0, 11, 0):
+            test_before_0_11_0_version()
+        else:
+            test_for_0_11_0_version_and_later()
+
+    def test_custom_variable_definition_at_top_level_cause_error(self):
+        def test_before_0_11_0_version():
+            fun = '''
+            cache = {}
+            def mapfun(doc):
+              if not doc['_id'] in cache:
+                yield doc['_id'], doc
+            '''
+            resp = self.qs.run(['add_fun', textwrap.dedent(fun)])
+            self.assertEqual(resp['error'], 'compilation_error')
+            self.assertEqual(self.qs.close(), 0)
+
+        def test_for_0_11_0_version_and_later():
+            fun = '''
+            cache = {}
+            def mapfun(doc):
+              if not doc['_id'] in cache:
+                yield doc['_id'], doc
+            '''
+            resp = self.qs.run(['add_fun', textwrap.dedent(fun)])
+            self.assertEqual(resp[0], 'error')
+            self.assertEqual(resp[1], 'compilation_error')
+            self.assertEqual(self.qs.close(), 0)
+
+        if COUCHDB_VERSION < (0, 11, 0):
+            test_before_0_11_0_version()
+        else:
+            test_for_0_11_0_version_and_later()
 
 class ValidateTestCase(QueryServerMixIn, TestFuncsMixIn):
 

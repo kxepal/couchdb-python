@@ -14,6 +14,7 @@ import sys
 import traceback
 from codecs import BOM_UTF8
 from types import FunctionType
+from types import ModuleType
 
 from couchdb import json
 
@@ -296,14 +297,23 @@ def run(input=sys.stdin, output=sys.stdout, version=TRUNK):
             exec bytecode in context, globals_
         except Exception, err:
             raise Error('compilation_error', '%s:\n%s' % (err, funstr))
-        try:
-            func = globals_ and globals_.values()[0] or None
-            assert isinstance(func, FunctionType)
-        except AssertionError:
-            msg = 'Expression does not eval to a function: \n%s' % funstr
-            raise Error('compilation_error', msg)
-        else:
-            return func
+        msg = None
+        func = None
+        for item in globals_.values():
+            if isinstance(item, FunctionType):
+                if func is None:
+                    func = item
+                else:
+                    msg = 'Mutiple functions are defined. Only one is allowed.'
+            elif not isinstance(item, ModuleType):
+                msg = 'Only functions could be defined at top level namespace'
+            if msg is not None:
+                break
+        if msg is None and not isinstance(func, FunctionType):
+            msg = 'Expression does not eval to a function'
+        if msg is not None:
+            raise Error('compilation_error', '%s\n%s' % (msg, funstr))
+        return func
 
 ################################################################################
 # Mimeparse
