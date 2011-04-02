@@ -629,7 +629,7 @@ def run(input=sys.stdin, output=sys.stdout, version=TRUNK):
                     msg = 'map function raised error for doc._id %s\n%s\n'
                     funstr = State.functions_src[i]
                     log.exception(msg, docid, funstr)
-                    raise FatalError(err.__class__.__name__, msg % (docid, err))
+                    raise Error(err.__class__.__name__, msg % (docid, err))
                 else:
                     map_results.append(result)
                 # quick and dirty trick to prevent document from changing

@@ -296,6 +296,27 @@ class ViewTestCase(QueryServerMixIn, TestFuncsMixIn):
         else:
             test_for_0_11_0_version_and_later()
 
+    def test_map_exceptions_should_not_crush_viewserver(self):
+        def test_before_0_11_0_version():
+            self.qs.reset()
+            self.qs.run(['add_fun', self.funs['emit_once']])
+            resp = self.qs.run(['map_doc', {'_id': 'foo'}])
+            self.assertEqual(resp['error'], 'KeyError')
+            self.assertEqual(self.qs.close(), 0)
+
+        def test_for_0_11_0_version_and_later():
+            self.qs.reset()
+            self.qs.run(['add_fun', self.funs['emit_once']])
+            resp = self.qs.run(['map_doc', {'_id': 'foo'}])
+            self.assertEqual(resp[0], 'error')
+            self.assertEqual(resp[1], 'KeyError')
+            self.assertEqual(self.qs.close(), 0)
+
+        if COUCHDB_VERSION < (0, 11, 0):
+            test_before_0_11_0_version()
+        else:
+            test_for_0_11_0_version_and_later()
+
 class ValidateTestCase(QueryServerMixIn, TestFuncsMixIn):
 
     def functions(self):
