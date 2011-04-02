@@ -29,6 +29,7 @@ class NullHandler(logging.Handler):
 
 log = logging.getLogger('couchdb.view')
 log.addHandler(NullHandler())
+log.setLevel(logging.INFO)
 
 def run(input=sys.stdin, output=sys.stdout, version=TRUNK):
     r"""CouchDB view server implementation for Python.
@@ -100,33 +101,41 @@ def run(input=sys.stdin, output=sys.stdout, version=TRUNK):
             obj = json.encode(obj)
         except ValueError, err:
             log.exception('Error converting %r to json', obj)
-            _log('Error converting object to JSON: %s' % err)
-            _log('error on obj: %r' % obj)
             raise FatalError('json_encode', str(err))
         else:
             if isinstance(obj, unicode):
                 obj = obj.encode('utf-8')
             output.write(obj)
             output.write('\n')
-            output.flush()
+            try:
+                output.flush()
+            except IOError:
+                # This could happened if view server process would be terminated
+                # unexpectable. Probably, this exception is not one that would
+                # care us in such situation.
+                pass
 
-    def _log(message):
-        '''Logs message to CouchDB output stream.
+    class ViewServerHandler(logging.Handler):
+        def emit(self, record):
+            '''Logs message to CouchDB output stream.
 
-        Output format:
-            till 0.11.0 version: {"log": message}
-            since 0.11.0 version: ["log", message]
-        '''
-        if COUCHDB_VERSION < (0, 11, 0):
-            if message is None:
-                message = 'Error: attemting to log message of None'
-            if not isinstance(message, basestring):
-                message = json.encode(message)
-            respond({'log': message})
-        else:
-            if not isinstance(message, basestring):
-                message = json.encode(message)
-            respond(['log', message])
+            Output format:
+                till 0.11.0 version: {"log": message}
+                since 0.11.0 version: ["log", message]
+            '''
+            message = self.format(record)
+            if COUCHDB_VERSION < (0, 11, 0):
+                if message is None:
+                    message = 'Error: attemting to log message of None'
+                if not isinstance(message, basestring):
+                    message = json.encode(message)
+                res = {'log': message}
+            else:
+                if not isinstance(message, basestring):
+                    message = json.encode(message)
+                res = ['log', message]
+            respond(res)
+    log.addHandler(ViewServerHandler())
 
     @debug_dump_args
     def resolve_module(names, mod, root=None):
@@ -1146,8 +1155,7 @@ def run(input=sys.stdin, output=sys.stdout, version=TRUNK):
             except ViewServerException:
                 raise
             except Exception, err:
-                _log('function raised error: %s' % err)
-                _log('stacktrace: %s' % traceback.format_exc())
+                log.exception('function raised error: %s' % err)
                 raise Error('render_error', str(err))
 
         @debug_dump_args
@@ -1303,7 +1311,7 @@ def run(input=sys.stdin, output=sys.stdout, version=TRUNK):
 # Context for function compilation
 #
     context = {
-        'log': _log,
+        'log': log.info,
         'json': json,
         'Forbidden': Forbidden,
         'Error': Error,
@@ -1416,10 +1424,8 @@ Options:
   -h, --help              display a short help message and exit
   --json-module=<name>    set the JSON module to use ('simplejson', 'cjson',
                           or 'json' are supported)
-  --log-file=<file>       name of the file to write log messages to, or '-' to
-                          enable logging to the standard error stream
-  --debug                 enable debug logging; requires --log-file to be
-                          specified
+  --log-file=<file>       log file path.
+  --debug                 enable debug mode; useful with --log-file option.
   --couchdb-version=<ver> define with which version of couchdb server will work
                           default: latest implemented.
                           Supports from 0.9.0 to 1.1.0 and trunk. Technicaly
@@ -1455,16 +1461,10 @@ def main():
             elif option in ['--debug']:
                 log.setLevel(logging.DEBUG)
             elif option in ['--log-file']:
-                if value == '-':
-                    handler = logging.StreamHandler(sys.stderr)
-                    handler.setFormatter(logging.Formatter(
-                        ' -> [%(levelname)s] %(message)s'
-                    ))
-                else:
-                    handler = logging.FileHandler(value)
-                    handler.setFormatter(logging.Formatter(
-                        '[%(asctime)s] [%(levelname)s] %(message)s'
-                    ))
+                handler = logging.FileHandler(value)
+                handler.setFormatter(logging.Formatter(
+                    '[%(asctime)s] [%(levelname)s] %(message)s'
+                ))
                 log.addHandler(handler)
             elif option in ['--couchdb-version']:
                 if value.lower() != 'trunk':
