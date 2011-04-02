@@ -555,7 +555,7 @@ def run(input=sys.stdin, output=sys.stdout, version=TRUNK):
             Returns:
                 True
             '''
-            if (1, 1, 0) <= COUCHDB_VERSION <= TRUNK:
+            if (1, 1, 0) <= COUCHDB_VERSION:
                 ddoc = {'views': {'lib': self.lib}}
                 self.functions.append(compile_func(funstr, ddoc))
             else:
@@ -1302,63 +1302,55 @@ def run(input=sys.stdin, output=sys.stdout, version=TRUNK):
 ################################################################################
 # Context for function compilation
 #
+    context = {
+        'log': _log,
+        'json': json,
+        'Forbidden': Forbidden,
+        'Error': Error,
+        'FatalError': FatalError
+    }
 
-    def context():
-        result = {
-            'log': _log,
-            'json': json,
-            'Forbidden': Forbidden,
-            'Error': Error,
-            'FatalError': FatalError
-        }
-        if (0, 9, 0) <= COUCHDB_VERSION:
-            result['provides'] = Mime.provides
-            result['register_type'] = Mime.register_type
-        if (0, 9, 0) <= COUCHDB_VERSION < (0, 10, 0):
-            result['response_with'] = RenderOld.response_with
-        elif COUCHDB_VERSION >= (0, 10, 0):
-            result['start'] = Render.start
-            result['send'] = Render.send
-            result['get_row'] = Render.get_row
-        return result
-
-    context = context()
+    if (0, 9, 0) <= COUCHDB_VERSION:
+        context['provides'] = Mime.provides
+        context['register_type'] = Mime.register_type
+    if (0, 9, 0) <= COUCHDB_VERSION < (0, 10, 0):
+        context['response_with'] = RenderOld.response_with
+    elif COUCHDB_VERSION >= (0, 10, 0):
+        context['start'] = Render.start
+        context['send'] = Render.send
+        context['get_row'] = Render.get_row
 
 ################################################################################
 # Main loop handlers
 #
 
-    def handlers():
-        result = {
-            'reset': State.reset,
-            'add_fun': State.add_fun,
-            'map_doc': Views.map_doc,
-            'reduce': Views.reduce,
-            'rereduce': Views.rereduce
-        }
-        if (0, 9, 0) <= COUCHDB_VERSION < (0, 10, 0):
-            result.update({
-                'show_doc': RenderOld.show_doc,
-                'list_begin': RenderOld.list_begin,
-                'list_row': RenderOld.list_row,
-                'list_tail': RenderOld.list_tail,
-                'validate': Validate.validate
-            })
-        elif (0, 10, 0) <= COUCHDB_VERSION < (0, 11, 0):
-            result.update({
-                'list': Render.list,
-                'show': Render.show,
-                'filter': Filters.filter,
-                'update': Render.update,
-                'validate': Validate.validate
-            })
-        elif COUCHDB_VERSION >= (0, 11, 0):
-            result['ddoc'] = DDoc.ddoc
-        if (1, 1, 0) <= COUCHDB_VERSION:
-            result['add_lib'] = State.add_lib
-        return result
-
-    handlers = handlers()
+    handlers = {
+        'reset': State.reset,
+        'add_fun': State.add_fun,
+        'map_doc': Views.map_doc,
+        'reduce': Views.reduce,
+        'rereduce': Views.rereduce
+    }
+    if (0, 9, 0) <= COUCHDB_VERSION < (0, 10, 0):
+        handlers.update({
+            'show_doc': RenderOld.show_doc,
+            'list_begin': RenderOld.list_begin,
+            'list_row': RenderOld.list_row,
+            'list_tail': RenderOld.list_tail,
+            'validate': Validate.validate
+        })
+    elif (0, 10, 0) <= COUCHDB_VERSION < (0, 11, 0):
+        handlers.update({
+            'list': Render.list,
+            'show': Render.show,
+            'filter': Filters.filter,
+            'update': Render.update,
+            'validate': Validate.validate
+        })
+    elif COUCHDB_VERSION >= (0, 11, 0):
+        handlers['ddoc'] = DDoc.ddoc
+    if (1, 1, 0) <= COUCHDB_VERSION:
+        handlers['add_lib'] = State.add_lib
 
 ################################################################################
 # Main loop itself
