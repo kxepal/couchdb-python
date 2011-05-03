@@ -17,8 +17,8 @@ It consists of the following main modules:
 * ``couchdb.mapping``: This module provides advanced mapping between CouchDB
   JSON documents and Python objects.
 
-Additionally, the ``couchdb.view`` module implements a view server for
-views written in Python.
+Additionally, the ``couchdb.server`` package implements a query server for
+Python functions.
 
 There may also be more information on the `project website`_.
 
@@ -36,6 +36,7 @@ Documentation
    getting-started.rst
    views.rst
    client.rst
+   server.rst
    mapping.rst
    changes.rst
 
