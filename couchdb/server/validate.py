@@ -55,6 +55,9 @@ def validate(func, *args):
     if state.version < (0, 11, 0):
         func = compile_func(func)
     if state.version >= (0, 11, 1):
-        argcount = func.func_code.co_argcount == 4 and 4 or 3
-        args = args[:argcount]
+        if func.func_code.co_argcount == 3:
+            log.warning('Since 0.11.1 CouchDB validate_doc_update functions'
+                        ' takes additional 4th argument `secobj`.'
+                        ' Please, update your code to remove this warning.')
+            args = args[:3]
     return run_validate(func, *args)
