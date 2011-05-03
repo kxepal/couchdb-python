@@ -78,8 +78,9 @@ class QueryServer(object):
             self.stream = stream
 
         def read(self):
-            while not self.stream.closed and self.proc.poll() is None:
+            while not self.stream.closed:
                 line = self.stream.readline()
+                self.proc.poll()
                 if not line:
                     continue
                 data = json.decode(line)
