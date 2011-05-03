@@ -67,7 +67,7 @@ def resolve_module(names, mod, root=None):
     return resolve_module(names, {
         'current': current[n],
         'parent': mod,
-        'id': (id is not None) and (id + '/' + n) or n
+        'id': (id is not None and id != n) and (id + '/' + n) or n
     })
 
 def require(ddoc):
@@ -90,9 +90,6 @@ def require(ddoc):
 
     :return: Exported statements.
     :rtype: dict
-
-    .. warning:: There is no any recursion protection yet, so be careful
-        to avoid require deadlocks.
 
     Example of stored module:
         >>> class Validate(object):
@@ -129,10 +126,14 @@ def require(ddoc):
     .. versionchanged:: 1.1.0 Avaiable for map functions if add_lib
         command proceeded.
     '''
+    _visited_ids = []
     def require(path, module=None):
         log.debug('Importing objects from %s', path)
         module = module or {}
         new_module = resolve_module(path.split('/'), module, ddoc)
+        if new_module['id'] in _visited_ids:
+            raise RuntimeError('Circular require calls deadlock occured')
+        _visited_ids.append(new_module['id'])
         source = new_module['current']
         globals_ = {
             'module': new_module,
@@ -146,6 +147,7 @@ def require(ddoc):
         except Exception, err:
             raise Error('compilation_error', '%s:\n%s' % (err, source))
         else:
+            _visited_ids.pop()
             return globals_['exports']
     return require
 

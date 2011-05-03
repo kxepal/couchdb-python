@@ -497,6 +497,10 @@ class ShowTestCase(QueryServerMixIn, TestFuncsMixIn):
             stuff = require('lib/utils.py')
             return ' - '.join([stuff['title'], stuff['body']])
 
+        def show_with_lazy_require(doc, req):
+            stuff = require('lib/utils.py')
+            return ' - '.join([stuff['title'](), stuff['body']()])
+
         def show_provides_old(doc, req):
             def html():
                 return '<html><body>%s</body></html>' % doc['_id']
@@ -675,6 +679,139 @@ class ShowTestCase(QueryServerMixIn, TestFuncsMixIn):
                               [{'title': 'some title', 'body': 'some body'}, {}])
             resp = self.qs.recv()
             self.assertEqual(resp, ['resp', {'body': 'best ever - doc body'}])
+
+        if COUCHDB_VERSION < (0, 9, 0):
+            test_versions_before_0_9_0()
+        elif COUCHDB_VERSION < (0, 10, 0):
+            test_versions_since_0_9_0_till_0_10_0()
+        elif COUCHDB_VERSION < (0, 11, 0):
+            test_versions_since_0_10_0_till_0_11_0()
+        else:
+            test_for_0_11_0_version_and_later()
+
+    def test_show_with_explicit_circular_require_calls(self):
+        ''' should not fall into infinity loop for circular require calls '''
+        def test_versions_before_0_9_0():
+            fun = self.funs['show_with_require']
+            self.qs.send(['show_doc', fun,
+                         {'title': 'best ever', 'body': 'doc body'}, {}])
+            resp = self.qs.recv()
+            self.assertEqual(resp, {'error': 'unknown_command',
+                                    'reason': 'unknown command show_doc'})
+            self.assertEqual(self.qs.close(), 1)
+
+        def test_versions_since_0_9_0_till_0_10_0():
+            fun = self.funs['show_with_require']
+            self.qs.send(['show_doc', fun,
+                         {'title': 'best ever', 'body': 'doc body'}])
+            resp = self.qs.recv()
+            self.assertEqual(resp['error'], 'render_error')
+            self.assertEqual(self.qs.close(), 0)
+
+        def test_versions_since_0_10_0_till_0_11_0():
+            fun = self.funs['show_with_require']
+            self.qs.send(['show', fun,
+                         {'title': 'best ever', 'body': 'doc body'}, {}])
+            resp = self.qs.recv()
+            self.assertEqual(resp['error'], 'render_error')
+            self.assertEqual(self.qs.close(), 0)
+
+        def test_for_0_11_0_version_and_later():
+            ddoc = {
+                '_id': 'foo',
+                'shows':{
+                    'with_require': self.funs['show_with_require'],
+                },
+                'lib': {
+                    'stuff': (
+                        "exports['utils'] = require('../lib/utils.py') \n"
+                        "exports['body'] = 'doc forever!'"),
+                    'helper': (
+                        "exports['title'] = 'best ever' \n"
+                        "exports['body'] = require('../lib/stuff')"),
+                    'utils.py': (
+                        "def help():\n"
+                        "  return require('../lib/helper') \n"
+                        "stuff = help()\n"
+                        "exports['title'] = stuff['title'] \n"
+                        "exports['body'] = stuff['body']")
+                }
+            }
+            self.qs.teach_ddoc(ddoc)
+            self.qs.send_ddoc(ddoc, ['shows', 'with_require'],
+                              [{'title': 'some title', 'body': 'some body'}, {}])
+            resp = self.qs.recv()
+            self.assertEqual(resp[0], 'error')
+            self.assertEqual(resp[1], 'compilation_error')
+
+        if COUCHDB_VERSION < (0, 9, 0):
+            test_versions_before_0_9_0()
+        elif COUCHDB_VERSION < (0, 10, 0):
+            test_versions_since_0_9_0_till_0_10_0()
+        elif COUCHDB_VERSION < (0, 11, 0):
+            test_versions_since_0_10_0_till_0_11_0()
+        else:
+            test_for_0_11_0_version_and_later()
+
+    def test_show_with_implicit_circular_require_calls(self):
+        ''' should not fall into infinity loop for circular require calls '''
+        def test_versions_before_0_9_0():
+            fun = self.funs['show_with_lazy_require']
+            self.qs.send(['show_doc', fun,
+                         {'title': 'best ever', 'body': 'doc body'}, {}])
+            resp = self.qs.recv()
+            self.assertEqual(resp, {'error': 'unknown_command',
+                                    'reason': 'unknown command show_doc'})
+            self.assertEqual(self.qs.close(), 1)
+
+        def test_versions_since_0_9_0_till_0_10_0():
+            fun = self.funs['show_with_lazy_require']
+            self.qs.send(['show_doc', fun,
+                         {'title': 'best ever', 'body': 'doc body'}])
+            resp = self.qs.recv()
+            self.assertEqual(resp['error'], 'render_error')
+            self.assertEqual(self.qs.close(), 0)
+
+        def test_versions_since_0_10_0_till_0_11_0():
+            fun = self.funs['show_with_lazy_require']
+            self.qs.send(['show', fun,
+                         {'title': 'best ever', 'body': 'doc body'}, {}])
+            resp = self.qs.recv()
+            self.assertEqual(resp['error'], 'render_error')
+            self.assertEqual(self.qs.close(), 0)
+
+        def test_for_0_11_0_version_and_later():
+            ddoc = {
+                '_id': 'foo',
+                'shows':{
+                    'show_with_lazy_require': self.funs['show_with_lazy_require'],
+                },
+                'lib': {
+                    'body': (
+                        "def body():\n"
+                        "  require('../lib/title')['title']() \n"
+                        "  return 'doc forever!' \n"
+                        "exports['body'] = body"),
+                    'title': (
+                        "def title():\n"
+                        "  require('../lib/body')['body']() \n"
+                        "  return 'best ever' \n"
+                        "exports['title'] = title"),
+                    'utils.py': (
+                        "def title():\n"
+                        "  return require('../lib/title')['title'] \n"
+                        "def body():\n"
+                        "  return require('../lib/body')['body'] \n"
+                        "exports['title'] = title() \n"
+                        "exports['body'] = body()")
+                }
+            }
+            self.qs.teach_ddoc(ddoc)
+            self.qs.send_ddoc(ddoc, ['shows', 'show_with_lazy_require'],
+                              [{'title': 'some title', 'body': 'some body'}, {}])
+            resp = self.qs.recv()
+            self.assertEqual(resp[0], 'error')
+            self.assertEqual(resp[1], 'render_error')
 
         if COUCHDB_VERSION < (0, 9, 0):
             test_versions_before_0_9_0()
