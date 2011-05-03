@@ -13,6 +13,8 @@ log = logging.getLogger(__name__)
 
 context = {}
 
+_code_type = type(compile('', '<string>', 'exec'))
+
 def resolve_module(names, mod, root=None):
     def helper():
         return ('\n    id: %r'
@@ -24,7 +26,7 @@ def resolve_module(names, mod, root=None):
     parent = mod.get('parent')
     current = mod.get('current')
     if not names:
-        if not isinstance(current, basestring):
+        if not isinstance(current, (basestring, _code_type)):
             raise Error('invalid_require_path',
                         'Must require Python string, not\n%r' % current)
         return {
@@ -142,7 +144,14 @@ def require(ddoc):
         module_context = context.copy()
         module_context['require'] = lambda path: require(path, new_module)
         try:
-            bytecode = compile(source, '<string>', 'exec')
+            if isinstance(source, basestring):
+                bytecode = compile(source, '<string>', 'exec')
+                point = ddoc
+                for item in new_module['id'].split('/'):
+                    prev, point = point, point.get(item)
+                prev[item] = bytecode
+            else:
+                bytecode = source
             exec bytecode in module_context, globals_
         except Exception, err:
             raise Error('compilation_error', '%s:\n%s' % (err, source))
