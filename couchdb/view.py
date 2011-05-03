@@ -39,7 +39,8 @@ Options:
   --json-module=<name>    set the JSON module to use ('simplejson', 'cjson',
                           or 'json' are supported)
   --log-file=<file>       log file path.
-  --debug                 enable debug mode; useful with --log-file option.
+  --log-level=<level>     specify logging level (debug, info, warn, error).
+                          Used info level if omitted.
   --couchdb-version=<ver> define with which version of couchdb server will work
                           default: latest implemented.
                           Supports from 0.9.0 to 1.1.0 and trunk. Technicaly
@@ -57,7 +58,7 @@ def main():
     try:
         option_list, argument_list = getopt.gnu_getopt(
             sys.argv[1:], 'h',
-            ['version', 'help', 'json-module=', 'debug', 'log-file=',
+            ['version', 'help', 'json-module=', 'log-level=', 'log-file=',
              'couchdb-version=']
         )
         version = None
@@ -70,8 +71,8 @@ def main():
                 message = _HELP % dict(name=os.path.basename(sys.argv[0]))
             elif option in ['--json-module']:
                 json.use(module=value)
-            elif option in ['--debug']:
-                qs_config['log_level'] = 'DEBUG'
+            elif option in ['--log-level']:
+                qs_config['log_level'] = value.upper()
             elif option in ['--log-file']:
                 qs_config['log_file'] = value
             elif option in ['--couchdb-version']:
