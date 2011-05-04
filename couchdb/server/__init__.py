@@ -120,14 +120,14 @@ class QueryServer(object):
         :return: 1
         :rtype: int
         '''
-        log.exception('FatalError occured %s: %s', *exc_value.args)
-        log.critical('That was a critical error, exiting')
+        log.exception('FatalError `%s` occured: %s', *exc_value.args)
         if state.version < (0, 11, 0):
             id, reason = exc_value.args
             retval = {'error': id, 'reason': reason}
         else:
             retval = ['error'] + list(exc_value.args)
         stream.respond(retval)
+        log.critical('That was a critical error, exiting')
         return 1
 
     def handle_qs_error(self, exc_type, exc_value, exc_traceback):
@@ -140,7 +140,7 @@ class QueryServer(object):
         :type exc_value: class instance.
         :type exc_traceback: traceback.
         '''
-        log.exception('Error occured %s: %s', *exc_value.args)
+        log.exception('Error `%s` occured: %s', *exc_value.args)
         if state.version < (0, 11, 0):
             id, reason = exc_value.args
             retval = {'error': id, 'reason': reason}
@@ -180,13 +180,13 @@ class QueryServer(object):
         '''
         err_name = type.__name__
         err_msg = str(value)
+        log.exception('%s: %s', err_name, err_msg)
         if state.version < (0, 11, 0):
             retval = {'error': err_name, 'reason': err_msg}
         else:
             retval = ['error', err_name, err_msg]
-        log.exception('%s: %s', err_name, err_msg)
-        log.critical('That was a critical error, exiting')
         stream.respond(retval)
+        log.critical('That was a critical error, exiting')
         return 1
 
     def error_handler(self, type, value, traceback):
@@ -217,9 +217,9 @@ class QueryServer(object):
         stream.output = output or sys.stdout
         try:
             for message in stream.receive():
-                log.debug('Processing %r', message)
                 try:
                     cmd, args = message.pop(0), message
+                    log.debug('Processing command `%s`', cmd)
                     if cmd not in self.commands:
                         raise exceptions.FatalError('unknown_command',
                                                     'unknown command %s' % cmd)
@@ -229,7 +229,6 @@ class QueryServer(object):
                     if retval is not None:
                         return retval
                 else:
-                    log.debug('Returning  %r', retval)
                     stream.respond(retval)
         except KeyboardInterrupt:
             return 0

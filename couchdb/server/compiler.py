@@ -22,13 +22,15 @@ def resolve_module(names, mod, root=None):
                 '\n    parent: %r'
                 '\n    current: %r'
                 '\n    root: %r') % (id, names, parent, current, root)
+    log.debug('Resolve module at %s. Current frame: %s', names, mod)
     id = mod.get('id')
     parent = mod.get('parent')
     current = mod.get('current')
     if not names:
         if not isinstance(current, (basestring, _code_type)):
             raise Error('invalid_require_path',
-                        'Must require Python string, not\n%r' % current)
+                        'Must require Python string or code object,'
+                        ' not %r' % current)
         return {
             'current': current,
             'parent': parent,
@@ -134,6 +136,9 @@ def require(ddoc):
         module = module or {}
         new_module = resolve_module(path.split('/'), module, ddoc)
         if new_module['id'] in _visited_ids:
+            log.error('Circular require calls have created deadlock!'
+                      ' DDoc id `%s` ; call stack: %r',
+                      ddoc.get('_id'), _visited_ids)
             del _visited_ids[:]
             raise RuntimeError('Circular require calls deadlock occured')
         _visited_ids.append(new_module['id'])
@@ -155,7 +160,11 @@ def require(ddoc):
                 else:
                     bytecode = source
                 exec bytecode in module_context, globals_
+            except Error, err:
+                err.__init__('compilation_error', err.args[1])
+                raise
             except Exception, err:
+                log.exception('Compilation error')
                 raise Error('compilation_error', '%s:\n%s' % (err, source))
             else:
                 return globals_['exports']
@@ -191,7 +200,8 @@ def compile_func(funstr, ddoc=None):
         bytecode = compile(funstr, '<string>', 'exec')
         exec bytecode in context, globals_
     except Exception, err:
-        raise Error('compilation_error', '%s:\n%s' % (err, funstr))
+        log.exception('Failed to compile function\n%s', funstr)
+        raise Error('compilation_error', err)
     msg = None
     func = None
     for item in globals_.values():
@@ -207,5 +217,6 @@ def compile_func(funstr, ddoc=None):
     if msg is None and not isinstance(func, FunctionType):
         msg = 'Expression does not eval to a function'
     if msg is not None:
-        raise Error('compilation_error', '%s\n%s' % (msg, funstr))
+        log.error('%s\n%s', msg, funstr)
+        raise Error('compilation_error', '%s' % msg)
     return func

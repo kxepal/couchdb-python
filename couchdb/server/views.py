@@ -25,16 +25,17 @@ def map_doc(doc):
           If any Python exception occures due mapping.
     '''
     docid = doc.get('_id')
-    log.debug('Running map functions for doc._id %s', docid)
+    log.debug('Running map functions for doc._id `%s`', docid)
     map_results = []
     orig_doc = doc.copy()
     for i, function in enumerate(state.functions):
         try:
             result = [[key, value] for key, value in function(doc) or []]
         except ViewServerException:
+            log.exception('Query server exception occured, aborting operation')
             raise
         except Exception, err:
-            msg = 'map function raised error for doc._id %s\n%s\n'
+            msg = 'Map function raised error for doc._id `%s`\n%s\n'
             funstr = state.functions_src[i]
             log.exception(msg, docid, funstr)
             raise Error(err.__class__.__name__, msg % (docid, err))
@@ -43,9 +44,9 @@ def map_doc(doc):
         # quick and dirty trick to prevent document from changing
         # within map functions.
         if doc != orig_doc:
-            log.warn("Document %s had been changed by map function "
-                     "'%s', but was restored to original state",
-                     doc.get('_id'), function.__name__)
+            log.warning("Document `%s` had been changed by map function "
+                        "'%s', but was restored to original state",
+                        doc.get('_id'), function.__name__)
             doc = orig_doc.copy()
     return map_results
 
@@ -77,12 +78,12 @@ def reduce(reduce_funs, kvs, rereduce=False):
             function = compile_func(funstr)
             result = function(*args[:function.func_code.co_argcount])
         except ViewServerException:
+            log.exception('Query server exception occured, aborting operation')
             raise
         except Exception, err:
-            # see comments for same block at map_doc
-            msg = 'reduce function raised error:\n%s' % err
+            msg = 'Reduce function raised an error'
             log.exception(msg)
-            raise Error(err.__class__.__name__, msg)
+            raise Error(err.__class__.__name__, msg + ':\n%s' % err)
         else:
             reductions.append(result)
 
@@ -95,6 +96,7 @@ def reduce(reduce_funs, kvs, rereduce=False):
         msg = "Reduce output must shirnk more rapidly:\n"\
               "Current output: '%s'... "\
               "(first 100 of %d bytes)" % (reduce_line[:100], reduce_len)
+        log.error(msg)
         raise Error('reduce_overflow_error', msg)
     return [True, reductions]
 
