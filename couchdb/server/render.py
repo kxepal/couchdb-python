@@ -92,7 +92,7 @@ def maybe_wrap_response(resp):
         return resp
 
 def is_doc_request_path(info):
-    return len(info.path) > 5
+    return len(info['path']) > 5
 
 def run_show(func, doc, req):
     try:
@@ -286,10 +286,8 @@ def response_with(req, responders):
     accept = 'headers' in req and req['headers'].get('Accept') or None
     query = req.get('query', {})
     if accept is not None and 'format' not in query:
-        provides = []
-        for key in responders:
-            if key in mime.mimes_by_key:
-                provides += list(mime.mimes_by_key[key])
+        provides = [item for key in responders
+                         for item in mime.mimes_by_key.get(key, ())]
         best_mime = mime.best_match(provides, accept)
         best_key = mime.keys_by_mime.get(best_mime)
     else:
