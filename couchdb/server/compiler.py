@@ -134,6 +134,7 @@ def require(ddoc):
         module = module or {}
         new_module = resolve_module(path.split('/'), module, ddoc)
         if new_module['id'] in _visited_ids:
+            del _visited_ids[:]
             raise RuntimeError('Circular require calls deadlock occured')
         _visited_ids.append(new_module['id'])
         source = new_module['current']
@@ -144,20 +145,23 @@ def require(ddoc):
         module_context = context.copy()
         module_context['require'] = lambda path: require(path, new_module)
         try:
-            if isinstance(source, basestring):
-                bytecode = compile(source, '<string>', 'exec')
-                point = ddoc
-                for item in new_module['id'].split('/'):
-                    prev, point = point, point.get(item)
-                prev[item] = bytecode
+            try:
+                if isinstance(source, basestring):
+                    bytecode = compile(source, '<string>', 'exec')
+                    point = ddoc
+                    for item in new_module['id'].split('/'):
+                        prev, point = point, point.get(item)
+                    prev[item] = bytecode
+                else:
+                    bytecode = source
+                exec bytecode in module_context, globals_
+            except Exception, err:
+                raise Error('compilation_error', '%s:\n%s' % (err, source))
             else:
-                bytecode = source
-            exec bytecode in module_context, globals_
-        except Exception, err:
-            raise Error('compilation_error', '%s:\n%s' % (err, source))
-        else:
-            _visited_ids.pop()
-            return globals_['exports']
+                return globals_['exports']
+        finally:
+            if _visited_ids:
+                _visited_ids.pop()
     return require
 
 def compile_func(funstr, ddoc=None):
