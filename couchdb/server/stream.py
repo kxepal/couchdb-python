@@ -27,7 +27,9 @@ def receive():
         line = input.readline()
         last_line = line
         if not line:
+            log.debug('No more data in stream.')
             break
+        log.debug('Data received:\n%s', line)
         yield json.decode(line)
 
 def respond(obj):
@@ -36,6 +38,7 @@ def respond(obj):
     :param obj: JSON encodable object.
     :type obj: dict or list
     '''
+    log.debug('Data to respond:\n%s', obj)
     try:
         obj = json.encode(obj)
     except ValueError, err:
@@ -44,11 +47,13 @@ def respond(obj):
     else:
         if isinstance(obj, unicode):
             obj = obj.encode('utf-8')
+        log.debug('Responding:\n%s', obj)
         output.write(obj)
         output.write('\n')
         try:
             output.flush()
         except IOError:
+            log.exception('IOError occured while output flushing.')
             # This could happened if query server process have been terminated
             # unexpectable. Probably, this exception is not one that would
             # care us in such situation.
