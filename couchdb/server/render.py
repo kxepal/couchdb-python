@@ -281,9 +281,10 @@ def response_with(req, responders):
     :return: Response object.
     :rtype: dict
     '''
-    best_mime = 'text/plain'
+    accept = None
     best_key = None
-    accept = 'headers' in req and req['headers'].get('Accept') or None
+    if 'headers' in req:
+        accept = req['headers'].get('Accept')
     query = req.get('query', {})
     if accept is not None and 'format' not in query:
         provides = [item for key in responders
