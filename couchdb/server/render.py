@@ -36,6 +36,7 @@ def start(resp=None):
     startresp.update(resp or {})
 
 def send_start():
+    log.debug('Starting respond')
     resp = apply_content_type(startresp or {}, mime.resp_content_type)
     stream.respond(['start', chunks, resp])
     del chunks[:]
@@ -57,6 +58,7 @@ def send(chunk):
     chunks.append(unicode(chunk))
 
 def blow_chunks(label='chunks'):
+    log.debug('Sending chunks')
     stream.respond([label, chunks])
     del chunks[:]
 
@@ -92,11 +94,11 @@ def maybe_wrap_response(resp):
 def is_doc_request_path(info):
     return len(info.path) > 5
 
-def run_show(fun, *args):
+def run_show(func, doc, req):
     try:
         reset_list()
         mime.reset_provides()
-        resp = fun(*args) or {}
+        resp = func(doc, req) or {}
         if chunks:
             resp = maybe_wrap_response(resp)
             if not 'headers' in resp:
@@ -105,50 +107,48 @@ def run_show(fun, *args):
             resp['body'] = ''.join(chunks) + resp.get('body', '')
             reset_list()
         if mime.provides_used():
-            resp = mime.run_provides(args[1])
+            resp = mime.run_provides(req)
             resp = maybe_wrap_response(resp)
             resp = apply_content_type(resp, mime.resp_content_type)
         if isinstance(resp, (dict, basestring)):
             return ['resp', maybe_wrap_response(resp)]
         else:
-            log.debug('resp: %r ; type: %r', resp, type(resp))
+            log.error('Invalid response object %r ; type: %r', resp, type(resp))
             raise Error('render_error',
                         'undefined response from show function')
+    except ViewServerException:
+        raise
     except Exception, err:
-        if args[0] is None and is_doc_request_path(args[1]):
+        log.exception('Unexpected exception occured')
+        if doc is None and is_doc_request_path(req):
             raise Error('not_found', 'document not found')
-        if isinstance(err, ViewServerException):
-            raise
-        else:
-            log.exception('unexpected error occured')
-            raise Error('render_error', str(err))
+        raise Error('render_error', str(err))
 
-def run_update(fun, *args):
+def run_update(func, doc, req):
     try:
-        method = args[1]['method']
+        method = req['method']
         if method == 'GET':
-            log.debug('method: %s', method)
+            log.error('update functions do not allow GET')
             raise Error('method_not_allowed',
                         'update functions do not allow GET')
-        doc, resp = fun(*args)
+        doc, resp = func(doc, req)
         if isinstance(resp, (dict, basestring)):
             return ['up', doc, maybe_wrap_response(resp)]
         else:
-            log.debug('resp: %r ; type: %r', resp, type(resp))
+            log.error('Invalid response object %r ; type: %r', resp, type(resp))
             raise Error('render_error',
                         'undefined response from update function')
     except ViewServerException:
         raise
     except Exception, err:
-        log.exception('unexpected error occured')
+        log.exception('Unexpected exception occured')
         raise Error('render_error', str(err))
 
-def run_list(fun, *args):
+def run_list(func, head, req):
     try:
         mime.reset_provides()
         reset_list()
-        head, req = args
-        tail = fun(*args)
+        tail = func(head, req)
         if mime.provides_used():
             tail = mime.run_provides(req)
         if not gotrow:
@@ -160,7 +160,7 @@ def run_list(fun, *args):
     except ViewServerException:
         raise
     except Exception, err:
-        log.exception('unexpected error occured')
+        log.exception('Unexpected exception occured')
         raise Error('render_error', str(err))
 
 def list(*args):
@@ -168,8 +168,8 @@ def list(*args):
 
     :command: list / lists
 
-    :param func: List function.
-    :param doc: Document object.
+    :param func: List function object.
+    :param head: View result information.
     :param req: Request info.
     :type func: function
     :type doc: dict
@@ -177,8 +177,7 @@ def list(*args):
 
     .. versionadded:: 0.10.0
     .. versionchanged:: 0.11.0 Now is a subcommand of :ref:`ddoc` as  `lists`.
-    .. versionchanged:: 0.11.0 ``func`` parameter have passed as function
-            object instead of source string.
+    .. versionchanged:: 0.11.0 Add first parameter ``func`` as function object.
     '''
     if state.version < (0, 11, 0):
         func = state.functions[0]
@@ -262,12 +261,13 @@ def render_function(func, args, funstr=None):
         if resp:
             return maybe_wrap_response(resp)
         else:
+            log.error('undefined response from render')
             raise Error('render_error', 'undefined response from render'
                                         ' function: %s' % resp)
     except ViewServerException:
         raise
     except Exception, err:
-        log.exception('function raised error: %s' % err)
+        log.exception('Unexpected exception occured')
         raise Error('render_error', str(err))
 
 def response_with(req, responders):
@@ -351,7 +351,7 @@ def list_row(row, req):
 
     :command: list_row
 
-    :param row: Headers information.
+    :param row: View result information.
     :param req: Request information.
     :type row: dict
     :type req: dict
