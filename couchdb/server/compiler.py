@@ -38,7 +38,11 @@ def resolve_module(names, mod, root=None):
             'exports': {}
         }
     n = names.pop(0)
-    if n.startswith('.') and root is not None and id is not None:
+    if not n:
+        raise Error('invalid_require_path',
+                    'Required path shouldn\'t starts with slash character'
+                    ' or contains sequence of slashes.' + helper())
+    if n in '..' and root is not None and id is not None:
         id = id[:id.rfind('/')]
         current = parent.get('current')
         parent = parent.get('parent')
@@ -60,10 +64,6 @@ def resolve_module(names, mod, root=None):
             'parent': parent,
             'current': current,
         })
-    elif not n:
-        raise Error('invalid_require_path',
-                    'Required path shouldn\'t starts with slash character'
-                    ' or contains sequence of slashes.' + helper())
     elif root:
         id = None
         mod = {'current': root}
