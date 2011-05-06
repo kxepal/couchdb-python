@@ -659,16 +659,26 @@ class ShowTestCase(QueryServerMixIn, TestFuncsMixIn):
         def test_for_0_11_0_version_and_later():
             ddoc = {
                 '_id': 'foo',
-                'shows':{
+                'shows': {
                     'with_require': self.funs['show_with_require'],
                 },
                 'lib': {
-                    'helper': (
-                        "exports['title'] = 'best ever' \n"
-                        "exports['body'] = 'doc body'"),
+                    'helper': {
+                        'a': {
+                            'b': {
+                                'c': "exports.update(require('lib/helper/a/d/e'))",
+                            },
+                            'd': {
+                                'e': "exports.update(require('../.././././f'))"
+                            }
+                        },
+                        'f': "exports.update(require('.././helper/./g'))",
+                        'g': ("exports['title'] = 'best ever'\n"
+                              "exports['body'] = 'doc body'")
+                    },
                     'utils.py': (
                         "def help():\n"
-                        "  return require('../lib/helper') \n"
+                        "  return require('./helper/a/b/c') \n"
                         "stuff = help()\n"
                         "exports['title'] = stuff['title'] \n"
                         "exports['body'] = stuff['body']")
@@ -724,14 +734,14 @@ class ShowTestCase(QueryServerMixIn, TestFuncsMixIn):
                 },
                 'lib': {
                     'stuff': (
-                        "exports['utils'] = require('../lib/utils.py') \n"
+                        "exports['utils'] = require('./utils.py') \n"
                         "exports['body'] = 'doc forever!'"),
                     'helper': (
                         "exports['title'] = 'best ever' \n"
-                        "exports['body'] = require('../lib/stuff')"),
+                        "exports['body'] = require('./stuff')"),
                     'utils.py': (
                         "def help():\n"
-                        "  return require('../lib/helper') \n"
+                        "  return require('./helper') \n"
                         "stuff = help()\n"
                         "exports['title'] = stuff['title'] \n"
                         "exports['body'] = stuff['body']")
@@ -789,19 +799,19 @@ class ShowTestCase(QueryServerMixIn, TestFuncsMixIn):
                 'lib': {
                     'body': (
                         "def body():\n"
-                        "  require('../lib/title')['title']() \n"
+                        "  require('./title')['title']() \n"
                         "  return 'doc forever!' \n"
                         "exports['body'] = body"),
                     'title': (
                         "def title():\n"
-                        "  require('../lib/body')['body']() \n"
+                        "  require('./body')['body']() \n"
                         "  return 'best ever' \n"
                         "exports['title'] = title"),
                     'utils.py': (
                         "def title():\n"
-                        "  return require('../lib/title')['title'] \n"
+                        "  return require('./title')['title'] \n"
                         "def body():\n"
-                        "  return require('../lib/body')['body'] \n"
+                        "  return require('./body')['body'] \n"
                         "exports['title'] = title() \n"
                         "exports['body'] = body()")
                 }
@@ -811,7 +821,7 @@ class ShowTestCase(QueryServerMixIn, TestFuncsMixIn):
                               [{'title': 'some title', 'body': 'some body'}, {}])
             resp = self.qs.recv()
             self.assertEqual(resp[0], 'error')
-            self.assertEqual(resp[1], 'render_error')
+            self.assertEqual(resp[1], 'render_error', resp[2])
 
         if COUCHDB_VERSION < (0, 9, 0):
             test_versions_before_0_9_0()
@@ -1000,7 +1010,7 @@ class ShowTestCase(QueryServerMixIn, TestFuncsMixIn):
             fun = self.funs['show_provides_old']
             self.qs.send(['show_doc', fun, doc, req])
             resp = self.qs.recv()
-            # that would be true if couchdb query server would be requested
+            # that would be true if couchdb query server have been requested
             # directly, not from this test emulator
             # self.assertTrue('text/html' in resp['headers']['Content-Type'])
             self.assertEqual(resp['body'], '<html><body>couch</body></html>')

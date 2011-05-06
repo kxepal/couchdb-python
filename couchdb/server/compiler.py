@@ -38,14 +38,18 @@ def resolve_module(names, mod, root=None):
             'exports': {}
         }
     n = names.pop(0)
+    if n.startswith('.') and root is not None and id is not None:
+        id = id[:id.rfind('/')]
+        current = parent.get('current')
+        parent = parent.get('parent')
     if n == '..':
         if parent is None or parent.get('parent') is None:
             raise Error('invalid_require_path',
                         'Object %r has no parent.' % id + helper())
         return resolve_module(names, {
             'id': id[:id.rfind('/')],
-            'parent': parent['parent'].get('parent'),
-            'current': parent['parent'].get('current')
+            'parent': parent.get('parent'),
+            'current': parent.get('current'),
         })
     elif n == '.':
         if parent is None:
@@ -53,15 +57,17 @@ def resolve_module(names, mod, root=None):
                         'Object %r has no parent.' % id + helper())
         return resolve_module(names, {
             'id': id,
-            'parent': parent.get('parent'),
-            'current': parent.get('current'),
+            'parent': parent,
+            'current': current,
         })
     elif not n:
         raise Error('invalid_require_path',
                     'Required path shouldn\'t starts with slash character'
                     ' or contains sequence of slashes.' + helper())
     elif root:
-        mod, current = {'current': root}, root
+        id = None
+        mod = {'current': root}
+        current = root
     if current is None:
         raise Error('invalid_require_path',
                     'Required module missing.' + helper())
@@ -71,7 +77,7 @@ def resolve_module(names, mod, root=None):
     return resolve_module(names, {
         'current': current[n],
         'parent': mod,
-        'id': (id is not None and id != n) and (id + '/' + n) or n
+        'id': (id is not None) and (id + '/' + n) or n
     })
 
 def require(ddoc):
@@ -85,6 +91,9 @@ def require(ddoc):
     Require function extracts export statements from stored module within
     design document. It could be used to access shared libriaries of common used
     functions, however it's avaliable only for DDoc function set.
+
+    This function is from CommonJS world and works by detailed
+    `specification <http://wiki.commonjs.org/wiki/Modules/1.1>`_.
 
     :param path: Path to stored module throught document structure fields.
     :param module: Current execution context. Normaly, you wouldn't used this
