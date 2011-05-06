@@ -42,10 +42,6 @@ def resolve_module(names, mod, root=None):
         raise Error('invalid_require_path',
                     'Required path shouldn\'t starts with slash character'
                     ' or contains sequence of slashes.' + helper())
-    if n in '..' and root is not None and id is not None:
-        id = id[:id.rfind('/')]
-        current = parent.get('current')
-        parent = parent.get('parent')
     if n == '..':
         if parent is None or parent.get('parent') is None:
             raise Error('invalid_require_path',
@@ -142,7 +138,7 @@ def require(ddoc):
     _visited_ids = []
     def require(path, module=None):
         log.debug('Importing objects from %s', path)
-        module = module or {}
+        module = module and module.get('parent') or {}
         new_module = resolve_module(path.split('/'), module, ddoc)
         if new_module['id'] in _visited_ids:
             log.error('Circular require calls have created deadlock!'
