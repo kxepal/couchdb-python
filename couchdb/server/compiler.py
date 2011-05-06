@@ -93,7 +93,7 @@ def require(ddoc):
     functions, however it's avaliable only for DDoc function set.
 
     This function is from CommonJS world and works by detailed
-    `specification <http://wiki.commonjs.org/wiki/Modules/1.1>`_.
+    `specification <http://wiki.commonjs.org/wiki/Modules/1.1.1>`_.
 
     :param path: Path to stored module throught document structure fields.
     :param module: Current execution context. Normaly, you wouldn't used this
