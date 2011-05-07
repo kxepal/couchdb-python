@@ -34,6 +34,7 @@ def reset(config=None):
     :rtype: bool
     '''
     del functions[:]
+    del functions_src[:]
     query_config.clear()
     if config is not None:
         query_config.update(config)
