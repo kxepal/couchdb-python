@@ -15,7 +15,14 @@ def run_filter(func, docs, req, userctx=None):
     return [True, [bool(func(doc, *args)) for doc in docs]]
 
 def run_filter_view(func, docs):
-    return [True, [bool(tuple(func(doc))) for doc in docs]]
+    result = []
+    for doc in docs:
+        for item in func(doc):
+            result.append(True)
+            break
+        else:
+            result.append(False)
+    return [True, result]
 
 def filter(*args):
     '''Implemention of `filter` / ddoc `filters` commands.
