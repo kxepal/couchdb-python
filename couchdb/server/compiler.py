@@ -1,16 +1,34 @@
 # -*- coding: utf-8 -*-
 #
 '''Proceeds query server function compilation within special context.'''
+import base64
+import os
 import logging
+import tempfile
 from codecs import BOM_UTF8
 from types import FunctionType
 from types import ModuleType
 from couchdb.server.exceptions import Error
+try:
+    from pkgutil import iter_modules
+except ImportError:
+    try:
+        # Python 2.4
+        from pkg_resources import get_importer
+    except ImportError:
+        iter_modules = None
+    else:
+        def iter_modules(paths):
+            for path in paths:
+                loader = get_importer(path)
+                names = loader.get_data('EGG-INFO/top_level.txt')
+                for name in names.split('\n')[:-1]:
+                    yield loader, name, None
 
 __all__ = ['compile_func', 'require', 'context']
 
 log = logging.getLogger(__name__)
-
+state = None
 context = {}
 
 _code_type = type(compile('', '<string>', 'exec'))
@@ -75,6 +93,58 @@ def resolve_module(names, mod, root=None):
         'parent': mod,
         'id': (id is not None) and (id + '/' + n) or n
     })
+
+def import_b64egg(b64egg):
+    '''Imports top level namespace from base64 encoded egg file.
+
+    For Python 2.4 `setuptools <http://pypi.python.org/pypi/setuptools>`_
+    package required.
+
+    :param b64egg: Base64 encoded egg file.
+    :type b64egg: str
+
+    :return: Egg top level namespace or None if egg import disabled.
+    :rtype: dict
+    '''
+    global state
+    # Quick and dirty check for base64 encoded zipfile.
+    # Saves time and IO operations in most cases.
+    if not b64egg.startswith('UEsDBBQAAAAIA'):
+        return None
+    if state is None:
+        # circular import dependency resolve
+        from couchdb.server import state
+    if not state.enable_eggs:
+        return None
+    egg = None
+    exports = None
+    egg_cache = (state.egg_cache
+                 or os.environ.get('PYTHON_EGG_CACHE')
+                 or os.path.join(tempfile.gettempdir(), '.python-eggs'))
+    try:
+        try:
+            if iter_modules is None:
+                raise ImportError('No tools available to work with eggs.'
+                                  ' Probably, setuptools package could solve'
+                                  ' this problem.')
+            if not os.path.exists(egg_cache):
+                os.mkdir(egg_cache)
+            hegg, egg_path = tempfile.mkstemp(dir=egg_cache)
+            egg = os.fdopen(hegg, 'wb')
+            egg.write(base64.b64decode(b64egg))
+            egg.close()
+            exports = dict(
+                [(name, loader.load_module(name))
+                 for loader, name, ispkg in iter_modules([egg_path])]
+            )
+        except:
+            log.exception('Egg import failed')
+            raise
+        else:
+            return exports
+    finally:
+        if egg is not None and os.path.exists(egg_path):
+            os.unlink(egg_path)
 
 def require(ddoc):
     '''Wraps design ``require`` function with access to design document.
@@ -156,15 +226,24 @@ def require(ddoc):
         module_context['require'] = lambda path: require(path, new_module)
         try:
             try:
+                bytecode = None
                 if isinstance(source, basestring):
-                    bytecode = compile(source, '<string>', 'exec')
+                    egg = import_b64egg(source)
+                    if egg is None:
+                        bytecode = compile(source, '<string>', 'exec')
+                    else:
+                        exports = egg
                     point = ddoc
                     for item in new_module['id'].split('/'):
                         prev, point = point, point.get(item)
-                    prev[item] = bytecode
-                else:
+                    prev[item] = bytecode or egg
+                elif isinstance(source, _code_type):
                     bytecode = source
-                exec bytecode in module_context, globals_
+                elif isinstance(source, dict):
+                    exports = source
+                if bytecode is not None:
+                    exec bytecode in module_context, globals_
+                    exports = globals_.get('exports', {})
             except Error, err:
                 err.__init__('compilation_error', err.args[1])
                 raise
@@ -172,7 +251,7 @@ def require(ddoc):
                 log.exception('Compilation error')
                 raise Error('compilation_error', '%s:\n%s' % (err, source))
             else:
-                return globals_['exports']
+                return exports
         finally:
             if _visited_ids:
                 _visited_ids.pop()

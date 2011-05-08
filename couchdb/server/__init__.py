@@ -55,6 +55,14 @@ class QueryServer(object):
 
         self.commands = {}
 
+        enable_eggs = config.pop('enable_eggs', False)
+        if enable_eggs:
+            state.enable_eggs = True
+
+        egg_cache = config.pop('egg_cache', None)
+        if egg_cache is not None:
+            state.egg_cache = egg_cache
+
         log_level = config.pop('log_level', 'INFO')
         log.setLevel(getattr(logging, log_level.upper(), 'INFO'))
         log_file = config.pop('log_file', None)

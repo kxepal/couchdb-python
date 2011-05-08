@@ -832,6 +832,95 @@ class ShowTestCase(QueryServerMixIn, TestFuncsMixIn):
         else:
             test_for_0_11_0_version_and_later()
 
+    def test_show_with_eggs_as_modules(self):
+        ''' should import top level namespace of stored base64 encoded egg '''
+        def test_versions_before_0_9_0():
+            fun = self.funs['show_with_require']
+            self.qs.send(['show_doc', fun,
+                         {'title': 'best ever', 'body': 'doc body'}, {}])
+            resp = self.qs.recv()
+            self.assertEqual(resp, {'error': 'unknown_command',
+                                    'reason': 'unknown command show_doc'})
+            self.assertEqual(self.qs.close(), 1)
+
+        def test_versions_since_0_9_0_till_0_10_0():
+            fun = self.funs['show_with_require']
+            self.qs.send(['show_doc', fun,
+                         {'title': 'best ever', 'body': 'doc body'}])
+            resp = self.qs.recv()
+            self.assertEqual(resp['error'], 'render_error')
+            self.assertEqual(self.qs.close(), 0)
+
+        def test_versions_since_0_10_0_till_0_11_0():
+            fun = self.funs['show_with_require']
+            self.qs.send(['show', fun,
+                         {'title': 'best ever', 'body': 'doc body'}, {}])
+            resp = self.qs.recv()
+            self.assertEqual(resp['error'], 'render_error')
+            self.assertEqual(self.qs.close(), 0)
+
+        def test_for_0_11_0_version_and_later():
+            # TODO: testutils refactoring needs
+            self.qs.close()
+            self.qs.__init__(VIEW_SERVER, COUCHDB_VERSION, '--enable-eggs')
+            ddoc = {
+                '_id': 'foo',
+                'shows':{
+                    'show_with_require': self.funs['show_with_require'],
+                },
+                'lib': {
+                    'egg': (''
+'UEsDBBQAAAAIAKx1qD6TBtcyAwAAAAEAAAAdAAAARUdHLUlORk8vZGVwZW5kZW5jeV9saW5rcy50'
+'eHTjAgBQSwMEFAAAAAgArHWoPrbiy8BxAAAAuQAAABEAAABFR0ctSU5GTy9QS0ctSU5GT/NNLUlM'
+'SSxJ1A1LLSrOzM+zUjDUM+Dl8kvMTbVSSE1P5+VClQguzc1NLKq0Ugj18/bzD/fj5fLIz03VLUhM'
+'T0UScywtycgvwhDQTc1NzMxBEvbJTE7NK0bW6ZJanFyUWVACthEuGpCTWJKWX5SLJAQAUEsDBBQA'
+'AAAIAKx1qD7n9n20agAAAKYAAAAUAAAARUdHLUlORk8vU09VUkNFUy50eHQrTi0pLdArqOTlSk1P'
+'1wNi3cy8tHz9AG93XU8/N3804WD/0CBn12C9kooSNJmU1ILUvJTUvOTK+JzMvOxiLEpK8gvic1LL'
+'UnMgcqV5mWWpRcWp+vHxmXmZJfHxYFfARQtLU4tLMvPzwKIAUEsDBBQAAAAIAKx1qD6I9wVkCwAA'
+'AAkAAAAWAAAARUdHLUlORk8vdG9wX2xldmVsLnR4dCvNyyxLLSpO5QIAUEsDBBQAAAAIAKx1qD6T'
+'BtcyAwAAAAEAAAARAAAARUdHLUlORk8vemlwLXNhZmXjAgBQSwMEFAAAAAgAunSoPiupvPYyAAAA'
+'OgAAABQAAAB1bml2ZXJzZS9xdWVzdGlvbi5weeOKj0/MyYmPV7BViFZPTy2JT8wrLk8tUo/l4kpJ'
+'TVNAiGhoWnEpAEFRaklpUZ6CiREAUEsDBBQAAAAIAKx1qD71mOyCrAAAAAYBAAAVAAAAdW5pdmVy'
+'c2UvcXVlc3Rpb24ucHljy/3Ey9VQdMw3mQEKGIHYAYiLxYBECgNDOiNDFJDByNDCwBDFyJDCxBCs'
+'wQyUKuECEumpJfGJecXlqUUo+p1B+lkYwNqCNZiADL9MLSCpwYBJlIAkkkozc1JiklIyi0v0yjPz'
+'jI1iUtPTY0rzMstSi4pTYwpLU4tLMvPz9Aoqg0B6QEYXM4Ft8wMbX8IOJOLjE3Ny4uPBKsCiYFYQ'
+'E4p1QSD3lYAIeyaYKZxMAFBLAwQUAAAACADJdKg+38+n3x8AAAAdAAAAFAAAAHVuaXZlcnNlL19f'
+'aW5pdF9fLnB5SyvKz1UozcssSy0qTlXIzC3ILypRKCxNLS7JzM8DAFBLAwQUAAAACACsdag+VUoJ'
+'NoEAAAC4AAAAFQAAAHVuaXZlcnNlL19faW5pdF9fLnB5Y8v9xMs1q+iYbzIDFDABsQMQFwsCiRQG'
+'hmwGhhxGhihGBsYURoZgDZC0BiNIngNIFJamFpdk5uf5gcVLQEKleZllqUXFqSXI8mAdQSBCgwFG'
+'lGgBiaTSzJyUmKSUzOISvfLMPGOjmNT09BiYGTHx8Zl5mSXx8XoFlSUg3fZgm0G6AVBLAQIUABQA'
+'AAAIAKx1qD6TBtcyAwAAAAEAAAAdAAAAAAAAAAAAAAC2gQAAAABFR0ctSU5GTy9kZXBlbmRlbmN5'
+'X2xpbmtzLnR4dFBLAQIUABQAAAAIAKx1qD624svAcQAAALkAAAARAAAAAAAAAAAAAAC2gT4AAABF'
+'R0ctSU5GTy9QS0ctSU5GT1BLAQIUABQAAAAIAKx1qD7n9n20agAAAKYAAAAUAAAAAAAAAAAAAAC2'
+'gd4AAABFR0ctSU5GTy9TT1VSQ0VTLnR4dFBLAQIUABQAAAAIAKx1qD6I9wVkCwAAAAkAAAAWAAAA'
+'AAAAAAAAAAC2gXoBAABFR0ctSU5GTy90b3BfbGV2ZWwudHh0UEsBAhQAFAAAAAgArHWoPpMG1zID'
+'AAAAAQAAABEAAAAAAAAAAAAAALaBuQEAAEVHRy1JTkZPL3ppcC1zYWZlUEsBAhQAFAAAAAgAunSo'
+'PiupvPYyAAAAOgAAABQAAAAAAAAAAAAAALaB6wEAAHVuaXZlcnNlL3F1ZXN0aW9uLnB5UEsBAhQA'
+'FAAAAAgArHWoPvWY7IKsAAAABgEAABUAAAAAAAAAAAAAALaBTwIAAHVuaXZlcnNlL3F1ZXN0aW9u'
+'LnB5Y1BLAQIUABQAAAAIAMl0qD7fz6ffHwAAAB0AAAAUAAAAAAAAAAAAAAC2gS4DAAB1bml2ZXJz'
+'ZS9fX2luaXRfXy5weVBLAQIUABQAAAAIAKx1qD5VSgk2gQAAALgAAAAVAAAAAAAAAAAAAAC2gX8D'
+'AAB1bml2ZXJzZS9fX2luaXRfXy5weWNQSwUGAAAAAAkACQBZAgAAMwQAAAAA'),
+                    'utils.py': (
+                        "universe = require('lib/egg')['universe'] \n"
+                        "exports['title'] = 'The Answer' \n"
+                        "exports['body'] = str(universe.question.get_answer())")
+                }
+            }
+            self.qs.teach_ddoc(ddoc)
+            self.qs.send_ddoc(ddoc, ['shows', 'show_with_require'],
+                              [{'title': 'some title', 'body': 'some body'}, {}])
+            resp = self.qs.recv()
+            self.assertEqual(resp, ['resp', {'body': 'The Answer - 42'}])
+
+        if COUCHDB_VERSION < (0, 9, 0):
+            test_versions_before_0_9_0()
+        elif COUCHDB_VERSION < (0, 10, 0):
+            test_versions_since_0_9_0_till_0_10_0()
+        elif COUCHDB_VERSION < (0, 11, 0):
+            test_versions_since_0_10_0_till_0_11_0()
+        else:
+            test_for_0_11_0_version_and_later()
+
     def test_show_with_headers(self):
         ''' should show headers '''
         def test_versions_before_0_9_0():

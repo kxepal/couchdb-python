@@ -91,9 +91,10 @@ class QueryServer(object):
                     continue
                 yield data
 
-    def __init__(self, viewsrv_path, version):
+    def __init__(self, viewsrv_path, version, *args):
         version = '.'.join(map(str, version))
         exc = [sys.executable, viewsrv_path, '--couchdb-version=' + version]
+        exc.extend(list(args))
         self.pipe = subprocess.Popen(exc, stdin=subprocess.PIPE,
                                           stdout=subprocess.PIPE)
         self.input = self.pipe.stdin

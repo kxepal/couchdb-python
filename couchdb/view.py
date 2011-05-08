@@ -41,6 +41,10 @@ Options:
   --log-file=<file>       log file path.
   --log-level=<level>     specify logging level (debug, info, warn, error).
                           Used info level if omitted.
+  --enable-eggs           enables support of eggs as modules.
+  --egg-cache=<path>      specifies egg cache dir. If omitted, PYTHON_EGG_CACHE
+                          environment variable value would be used or system
+                          temporary directory if variable not setted.
   --couchdb-version=<ver> define with which version of couchdb server will work
                           default: latest implemented.
                           Supports from 0.9.0 to 1.1.0 and trunk. Technicaly
@@ -59,7 +63,7 @@ def main():
         option_list, argument_list = getopt.gnu_getopt(
             sys.argv[1:], 'h',
             ['version', 'help', 'json-module=', 'log-level=', 'log-file=',
-             'couchdb-version=']
+             'couchdb-version=', 'enable-eggs', 'egg-cache']
         )
         version = None
         message = None
@@ -75,6 +79,10 @@ def main():
                 qs_config['log_level'] = value.upper()
             elif option in ['--log-file']:
                 qs_config['log_file'] = value
+            elif option in ['--enable-eggs']:
+                qs_config['enable_eggs'] = True
+            elif option in ['--egg-cache']:
+                qs_config['egg_cache'] = value
             elif option in ['--couchdb-version']:
                 if value.lower() != 'trunk':
                     version = value.split('.')

@@ -5,7 +5,8 @@ import logging
 from couchdb.server.compiler import compile_func
 
 __all__ = ['add_fun', 'add_lib', 'reset', 'line_length', 'functions',
-           'functions_src', 'query_config', 'version']
+           'functions_src', 'query_config', 'version', 'enable_eggs',
+           'egg_cache']
 
 log = logging.getLogger(__name__)
 
@@ -21,6 +22,10 @@ query_config = {}
 #: Version of CouchDB server with which query server is compatibile.
 #: Default: latest implemented.
 version = None
+#: Controls eggs support feature
+enable_eggs = False
+#: Specify eggs cache path. If omitted, system tempdir would be used.
+egg_cache = None
 
 def reset(config=None):
     '''Resets view server state.
