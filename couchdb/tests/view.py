@@ -427,7 +427,7 @@ class ValidateTestCase(QueryServerMixIn, TestFuncsMixIn):
             self.qs.send_ddoc(self.ddoc, ['validate_doc_update'],
                                          [{'good': True}, {}, {}, {}])
             resp = self.qs.recv()
-            self.assertEqual(self.qs.close(), 1)
+            self.assertEqual(resp, 1)
 
         def test_for_0_11_1_version_and_later():
             self.qs.send_ddoc(self.ddoc, ['validate_doc_update'],

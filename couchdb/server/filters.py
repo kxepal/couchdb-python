@@ -3,15 +3,11 @@
 import logging
 from couchdb.server import state
 
-__all__ = ['filter', 'filter_view']
+__all__ = ['filter', 'ddoc_filter', 'ddoc_views']
 
 log = logging.getLogger(__name__)
 
-def run_filter(func, docs, req, userctx=None):
-    if state.version < (0, 11, 1):
-        args = req, userctx
-    else:
-        args = req,
+def run_filter(func, docs, *args):
     return [True, [bool(func(doc, *args)) for doc in docs]]
 
 def run_filter_view(func, docs):
@@ -24,38 +20,63 @@ def run_filter_view(func, docs):
             result.append(False)
     return [True, result]
 
-def filter(*args):
-    '''Implemention of `filter` / ddoc `filters` commands.
+def filter(docs, req, userctx=None):
+    '''Implemention of `filter` command. Should be prequested by ``add_fun``
+    command.
 
-    :command: filter / filters
+    :command: filter
 
-    :param func: Filter function object. Added since 0.11.0 version.
     :param docs: List of documents each one of will be passed though filter.
     :param req: Request info.
-    :param userctx: User info. Not used since 0.11.1 version.
+    :param userctx: User info.
+    :type docs: list
+    :type req: dict
+    :type userctx: dict
+
+    :return:
+        Two element list where first element is True and second is list of
+        booleans per document which marks has document passed filter or not.
+    :rtype: list
+
+    .. versionadded:: 0.10.0
+    .. deprecated:: 0.11.0
+        Now is a subcommand of :ref:`ddoc`.
+        Use :func:`~couchdb.server.filters.ddoc_filter` instead.
+    '''
+    return run_filter(state.functions[0], docs, req, userctx)
+
+def ddoc_filter(func, docs, req, userctx=None):
+    '''Implemention of ddoc `filters` command.
+
+    :command: filters
+
+    :param func: Filter function object.
+    :param docs: List of documents each one of will be passed though filter.
+    :param req: Request info.
+    :param userctx: User info.
     :type func: function
     :type docs: list
     :type req: dict
     :type userctx: dict
 
-    :return: Two element list where first element is True and second is
-        list of booleans which marks is document passed filter or not.
+    :return:
+        Two element list where first element is True and second is list of
+        booleans per document which marks has document passed filter or not.
     :rtype: list
 
-    .. versionadded:: 0.10.0
-    .. versionchanged:: 0.11.0 Added ``func`` argument as first.
-    .. versionchanged:: 0.11.0 Now is a subcommand of :ref:`ddoc` as `filters`.
-    .. versionchanged:: 0.11.1 Removed 4th argument ``userctx``.
-                               Use ``req['userctx']`` instead.
+    .. versionadded:: 0.11.0
+    .. versionchanged:: 0.11.1
+        Removed ``userctx`` argument. Use ``req['userctx']`` instead.
     '''
-    if state.version < (0, 11, 0):
-        func = state.functions[0]
+    if state.version < (0, 11, 1):
+        args = req, userctx
     else:
-        func, args = args[0], args[1:]
-    return run_filter(func, *args)
+        args = req,
+    return run_filter(func, docs, *args)
 
-def filter_view(func, docs):
-    '''Implemention of ddoc `views` commands.
+def ddoc_views(func, docs):
+    '''Implemention of ddoc `views` command. Filters ``_changes`` feed using
+    view map function.
 
     :command: views
 

@@ -299,16 +299,16 @@ def construct_server(version=None, **config):
 
     elif qs.version >= (0, 11, 0):
         qs.add_command('ddoc', ddoc.ddoc)
-        qs.add_command_ddoc('shows', render.show)
-        qs.add_command_ddoc('lists', render.list)
-        qs.add_command_ddoc('filters', filters.filter)
-        qs.add_command_ddoc('updates', render.update)
-        qs.add_command_ddoc('validate_doc_update', validate.validate)
+        qs.add_command_ddoc('shows', render.ddoc_show)
+        qs.add_command_ddoc('lists', render.ddoc_list)
+        qs.add_command_ddoc('filters', filters.ddoc_filter)
+        qs.add_command_ddoc('updates', render.ddoc_update)
+        qs.add_command_ddoc('validate_doc_update', validate.ddoc_validate)
 
     if qs.version >= (1, 1, 0):
         qs.add_command('add_lib', state.add_lib)
 
     if qs.version > (1, 1, 0):
-        qs.add_command_ddoc('views', filters.filter_view)
+        qs.add_command_ddoc('views', filters.ddoc_views)
 
     return qs

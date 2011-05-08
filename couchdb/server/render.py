@@ -163,10 +163,28 @@ def run_list(func, head, req):
         log.exception('Unexpected exception occured')
         raise Error('render_error', str(err))
 
-def list(*args):
-    '''Implemention of `list` / ddoc `lists` commands.
+def list(head, req):
+    '''Implemention of `list` command. Should be prequested by ``add_fun``
+    command.
 
-    :command: list / lists
+    :command: list
+
+    :param head: View result information.
+    :param req: Request info.
+    :type doc: dict
+    :type req: dict
+
+    .. versionadded:: 0.10.0
+    .. deprecated:: 0.11.0
+        Now is a subcommand of :ref:`ddoc`.
+        Use :func:`~couchdb.server.render.ddoc_list` instead.
+    '''
+    return run_list(state.functions[0], head, req)
+
+def ddoc_list(func, head, req):
+    '''Implemention of ddoc `lists` command.
+
+    :command: lists
 
     :param func: List function object.
     :param head: View result information.
@@ -175,43 +193,78 @@ def list(*args):
     :type doc: dict
     :type req: dict
 
-    .. versionadded:: 0.10.0
-    .. versionchanged:: 0.11.0 Now is a subcommand of :ref:`ddoc` as  `lists`.
-    .. versionchanged:: 0.11.0 Add first parameter ``func`` as function object.
+    .. versionadded:: 0.11.0
     '''
-    if state.version < (0, 11, 0):
-        func = state.functions[0]
-    else:
-        func, args = args[0], args[1:]
-    return run_list(func, *args)
+    return run_list(func, head, req)
 
 def show(func, doc, req):
-    '''Implemention of `show` / ddoc `shows` commands.
+    '''Implemention of `show` command.
 
-    :command: show / shows
+    :command: show
 
-    :param func: Update function.
+    :param func: Show function source.
+    :param doc: Document object.
+    :param req: Request info.
+    :type func: unicode
+    :type doc: dict
+    :type req: dict
+
+    .. versionadded:: 0.10.0
+    .. deprecated:: 0.11.0
+        Now is a subcommand of :ref:`ddoc`.
+        Use :func:`~couchdb.server.render.ddoc_show` instead.
+    '''
+    return run_show(compile_func(func), doc, req)
+
+def ddoc_show(func, doc, req):
+    '''Implemention of ddoc `shows` command.
+
+    :command: shows
+
+    :param func: Show function object.
     :param doc: Document object.
     :param req: Request info.
     :type func: function
     :type doc: dict
     :type req: dict
 
-    .. versionadded:: 0.10.0
-    .. versionchanged:: 0.11.0 Now is a subcommand of :ref:`ddoc` as `shows`.
-    .. versionchanged:: 0.11.0 ``func`` parameter have passed as function
-            object instead of source string.
+    .. versionadded:: 0.11.0
     '''
-    if state.version < (0, 11, 0):
-        func = compile_func(func)
     return run_show(func, doc, req)
 
 def update(func, doc, req):
-    '''Implemention of `update` / ddoc `updates` commands.
+    '''Implemention of `update` command.
 
-    :command: update / updates
+    :command: update
 
-    :param func: Update function.
+    :param func: Update function source.
+    :param doc: Document object.
+    :param req: Request info.
+    :type func: unicode
+    :type doc: dict
+    :type req: dict
+
+    :return: Three element list: ["up", doc, response]
+    :rtype: list
+
+    :raises:
+        - :exc:`~couchdb.server.exceptions.Error`
+          If request method was GET.
+          If response was not dict object or basestring.
+
+    .. versionadded:: 0.10.0
+    .. deprecated:: 0.11.0
+        Now is a subcommand of :ref:`ddoc`.
+        Use :func:`~couchdb.server.render.ddoc_update` instead.
+    '''
+    return run_update(compile_func(func), doc, req)
+
+def ddoc_update(func, doc, req):
+    '''Implemention of ddoc `updates` commands.
+
+    :command: updates
+
+    :param func: Update function object.
     :param doc: Document object.
     :param req: Request info.
     :type func: function
@@ -227,12 +280,7 @@ def update(func, doc, req):
           If response was not dict object or basestring.
 
     .. versionadded:: 0.10.0
-    .. versionchanged:: 0.11.0 Now is a subcommand of :ref:`ddoc` as `updates`.
-    .. versionchanged:: 0.11.0 ``func`` parameter have passed as function
-            object instead of source string.
     '''
-    if state.version < (0, 11, 0):
-        func = compile_func(func)
     return run_update(func, doc, req)
 
 def html_render_error(err, funstr):
