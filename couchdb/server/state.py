@@ -26,7 +26,7 @@ version = None
 enable_eggs = False
 #: Specify eggs cache path. If omitted, system tempdir would be used.
 egg_cache = None
-#: Allows 
+#: Allows GET requests to update functions
 allow_get_update = False
 
 def reset(config=None):

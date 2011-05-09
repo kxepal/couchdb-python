@@ -35,6 +35,7 @@ class ViewServerHandler(logging.Handler):
         stream.respond(res)
 
 log = logging.getLogger(__name__)
+log.setLevel(logging.INFO)
 log.addHandler(NullHandler())
 context_log = logging.getLogger(__name__ + '.design_function')
 context_log.setLevel(logging.INFO)
@@ -43,7 +44,7 @@ context_log.addHandler(ViewServerHandler())
 
 class QueryServer(object):
     '''Implements Python CouchDB query server.'''
-    def __init__(self, version=(999, 999, 999), **config):
+    def __init__(self, version=(999, 999, 999), **options):
         '''Initialize query server instance.
 
         :param version: CouchDB server version as three int elements tuple.
@@ -54,31 +55,45 @@ class QueryServer(object):
         state.version = version
 
         self.commands = {}
+        self.error_handlers = {
+            exceptions.Error: self.handle_qs_error,
+            exceptions.FatalError: self.handle_fatal_error,
+            exceptions.Forbidden: self.handle_forbidden_error,
+            'default': self.handle_exception
+        }
+        self.options = {
+            'allow_get_update': self.config_allow_get_update,
+            'enable_eggs': self.config_enable_eggs,
+            'egg_cache': self.config_egg_cache,
+            'log_level': self.config_log_level,
+            'log_file': self.config_log_file,
+        }
 
-        allow_get_update = config.pop('allow_get_update', False)
-        if allow_get_update:
-            state.allow_get_update = True
+        for key in list(options):
+            if key in self.options:
+                self.options[key](options.pop(key))
 
-        enable_eggs = config.pop('enable_eggs', False)
-        if enable_eggs:
-            state.enable_eggs = True
+        if options:
+            raise ValueError('Unknown query server config options %r' % options)
 
-        egg_cache = config.pop('egg_cache', None)
-        if egg_cache is not None:
-            state.egg_cache = egg_cache
+    def config_allow_get_update(self, value):
+        state.allow_get_update = True
 
-        log_level = config.pop('log_level', 'INFO')
-        log.setLevel(getattr(logging, log_level.upper(), 'INFO'))
-        log_file = config.pop('log_file', None)
-        if log_file is not None:
-            handler = logging.FileHandler(log_file)
-            handler.setFormatter(logging.Formatter(
-                '[%(asctime)s] [%(name)s] [%(levelname)s] %(message)s'
-            ))
-            log.addHandler(handler)
+    def config_enable_eggs(self, value):
+        state.enable_eggs = True
 
-        if config:
-            raise ValueError('Unknown query server config options %r' % config)
+    def config_egg_cache(self, value):
+        state.egg_cache = value
+
+    def config_log_level(self, value):
+        log.setLevel(getattr(logging, value.upper(), 'INFO'))
+
+    def config_log_file(self, value):
+        handler = logging.FileHandler(value)
+        handler.setFormatter(logging.Formatter(
+            '[%(asctime)s] [%(name)s] [%(levelname)s] %(message)s'
+        ))
+        log.addHandler(handler)
 
     def add_command(self, cmd, handler):
         '''Registers new query server command and binds handler for it.
@@ -201,21 +216,21 @@ class QueryServer(object):
         log.critical('That was a critical error, exiting')
         return 1
 
-    def error_handler(self, type, value, traceback):
+    def error_handler(self, type, value, traceback, default=None):
         '''Exception handling dispatcher for query server main loop.
 
         :param exc_type: Exception type.
         :param exc_value: Exception instance.
         :param exc_traceback: Actual exception traceback.
+        :param default: Custom default handler.
         :type exc_type: class object.
         :type exc_value: class instance.
         :type exc_traceback: traceback.
+        :type default: callable
         '''
-        return {
-            exceptions.Error: self.handle_qs_error,
-            exceptions.FatalError: self.handle_fatal_error,
-            exceptions.Forbidden: self.handle_forbidden_error
-        }.get(type, self.handle_exception)(type, value, traceback)
+        if default is None:
+            default = self.error_handlers['default']
+        return self.error_handlers.get(type, default)(type, value, traceback)
 
     def run(self, input=None, output=None):
         '''Query server main loop.
