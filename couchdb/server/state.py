@@ -19,7 +19,7 @@ functions = []
 functions_src = []
 #: Query server configuration.
 query_config = {}
-#: Version of CouchDB server with which query server is compatibile.
+#: Version of CouchDB server with which query server is compatible.
 #: Default: latest implemented.
 version = None
 #: Controls eggs support feature

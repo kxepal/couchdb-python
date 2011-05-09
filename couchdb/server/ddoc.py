@@ -23,7 +23,7 @@ def ddoc(*args):
 
     To put ddoc into cache:
 
-    :param new: String contant "new".
+    :param new: String constant "new".
     :param ddoc_id: Design document id.
     :param ddoc: Design document itself.
     :type new: unicode
@@ -43,7 +43,7 @@ def ddoc(*args):
 
     :return: If ddoc putted into cache True will be returned.
         If ddoc function called returns it's result if any exists.
-        For example, lists doesn't explicity returns any value.
+        For example, lists doesn't explicitly returns any value.
 
     .. versionadded:: 0.11.0
     .. versionchanged:: 1.1.0 Support for views subcommand.

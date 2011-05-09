@@ -53,7 +53,7 @@ def send(chunk):
     '''Sends an HTTP chunk to the client.
 
     :param chunk: Response chunk object. Would be converted to unicode string.
-    :type chunk: unicode or utf-8 encoded string prefered.
+    :type chunk: unicode or utf-8 encoded string preferred.
     '''
     chunks.append(unicode(chunk))
 
@@ -164,7 +164,7 @@ def run_list(func, head, req):
         raise Error('render_error', str(err))
 
 def list(head, req):
-    '''Implemention of `list` command. Should be prequested by ``add_fun``
+    '''Implementation of `list` command. Should be prequested by ``add_fun``
     command.
 
     :command: list
@@ -182,7 +182,7 @@ def list(head, req):
     return run_list(state.functions[0], head, req)
 
 def ddoc_list(func, head, req):
-    '''Implemention of ddoc `lists` command.
+    '''Implementation of ddoc `lists` command.
 
     :command: lists
 
@@ -198,7 +198,7 @@ def ddoc_list(func, head, req):
     return run_list(func, head, req)
 
 def show(func, doc, req):
-    '''Implemention of `show` command.
+    '''Implementation of `show` command.
 
     :command: show
 
@@ -217,7 +217,7 @@ def show(func, doc, req):
     return run_show(compile_func(func), doc, req)
 
 def ddoc_show(func, doc, req):
-    '''Implemention of ddoc `shows` command.
+    '''Implementation of ddoc `shows` command.
 
     :command: shows
 
@@ -233,7 +233,7 @@ def ddoc_show(func, doc, req):
     return run_show(func, doc, req)
 
 def update(func, doc, req):
-    '''Implemention of `update` command.
+    '''Implementation of `update` command.
 
     :command: update
 
@@ -260,7 +260,7 @@ def update(func, doc, req):
     return run_update(compile_func(func), doc, req)
 
 def ddoc_update(func, doc, req):
-    '''Implemention of ddoc `updates` commands.
+    '''Implementation of ddoc `updates` commands.
 
     :command: updates
 
@@ -352,7 +352,7 @@ def response_with(req, responders):
         return {'code': 406, 'body': 'Not Acceptable: %s' % accept}
 
 def show_doc(funstr, doc, req=None):
-    '''Implemention of `show_doc` command.
+    '''Implementation of `show_doc` command.
 
     :command: show_doc
 

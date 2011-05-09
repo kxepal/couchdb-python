@@ -11,7 +11,7 @@ __all__ = ['map_doc', 'reduce', 'rereduce']
 log = logging.getLogger(__name__)
 
 def map_doc(doc):
-    '''Applies avaiable map functions to document.
+    '''Applies available map functions to document.
 
     :command: map_doc
 
@@ -22,7 +22,7 @@ def map_doc(doc):
 
     :raises:
         - :exc:`~couchdb.server.exceptions.Error`
-          If any Python exception occures due mapping.
+          If any Python exception occurres due mapping.
     '''
     docid = doc.get('_id')
     log.debug('Running map functions for doc._id `%s`', docid)
@@ -67,7 +67,7 @@ def reduce(reduce_funs, kvs, rereduce=False):
 
     :raises:
         - :exc:`~couchdb.server.exceptions.Error`
-          If any Python exception occures or reduce ouput is twise longer
+          If any Python exception occurres or reduce ouput is twice longer
           as state.line_length and reduce_limit is enabled in state.query_config.
     '''
     reductions = []
@@ -115,7 +115,7 @@ def rereduce(reduce_funs, values):
 
     :raises:
         - :exc:`~couchdb.server.exceptions.Error`
-          If any Python exception occures or reduce ouput is twise longer
+          If any Python exception occurres or reduce ouput is twice longer
           as state.line_length and reduce_limit is enabled in state.query_config.
     '''
     return reduce(reduce_funs, values, rereduce=True)

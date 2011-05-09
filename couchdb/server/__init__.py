@@ -106,7 +106,7 @@ class QueryServer(object):
         self.commands[cmd] = handler
 
     def add_command_ddoc(self, cmd, handler):
-        '''Registers new design document command (actualy this is design
+        '''Registers new design document command (actually this is design
         document top level field) and binds handler for it.
 
         :param cmd: Command name.
@@ -147,7 +147,7 @@ class QueryServer(object):
         :return: 1
         :rtype: int
         '''
-        log.exception('FatalError `%s` occured: %s', *exc_value.args)
+        log.exception('FatalError `%s` occurred: %s', *exc_value.args)
         if state.version < (0, 11, 0):
             id, reason = exc_value.args
             retval = {'error': id, 'reason': reason}
@@ -167,7 +167,7 @@ class QueryServer(object):
         :type exc_value: class instance.
         :type exc_traceback: traceback.
         '''
-        log.exception('Error `%s` occured: %s', *exc_value.args)
+        log.exception('Error `%s` occurred: %s', *exc_value.args)
         if state.version < (0, 11, 0):
             id, reason = exc_value.args
             retval = {'error': id, 'reason': reason}
@@ -186,12 +186,12 @@ class QueryServer(object):
         :type exc_traceback: traceback.
         '''
         reason = exc_value.args[0]
-        log.warn('ForbiddenError occured: %s', reason)
+        log.warn('ForbiddenError occurred: %s', reason)
         retval = {'forbidden': reason}
         stream.respond(retval)
 
     def handle_exception(self, type, value, traceback):
-        '''Handler for any Python occured exception.
+        '''Handler for any Python occurred exception.
 
         Terminates query server.
 
@@ -261,7 +261,7 @@ class QueryServer(object):
             return 0
         except Exception, err:
             self.error_handler(*sys.exc_info())
-            log.exception('Unexpected error occured: %s', err)
+            log.exception('Unexpected error occurred: %s', err)
             log.critical('That was a critical error, exiting')
             return 1
 

@@ -21,7 +21,7 @@ def run_filter_view(func, docs):
     return [True, result]
 
 def filter(docs, req, userctx=None):
-    '''Implemention of `filter` command. Should be prequested by ``add_fun``
+    '''Implementation of `filter` command. Should be prequested by ``add_fun``
     command.
 
     :command: filter
@@ -46,7 +46,7 @@ def filter(docs, req, userctx=None):
     return run_filter(state.functions[0], docs, req, userctx)
 
 def ddoc_filter(func, docs, req, userctx=None):
-    '''Implemention of ddoc `filters` command.
+    '''Implementation of ddoc `filters` command.
 
     :command: filters
 
@@ -75,7 +75,7 @@ def ddoc_filter(func, docs, req, userctx=None):
     return run_filter(func, docs, *args)
 
 def ddoc_views(func, docs):
-    '''Implemention of ddoc `views` command. Filters ``_changes`` feed using
+    '''Implementation of ddoc `views` command. Filters ``_changes`` feed using
     view map function.
 
     :command: views

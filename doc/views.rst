@@ -13,7 +13,7 @@ After restarting CouchDB, the Futon view editor should show ``python`` in
 the language pull-down menu.
 
 The Python query server supports command line arguments which helps to customize
-it behavior or extend avaliable features:
+it behavior or extend available features:
 
     - ``--json-module=<name>``
       Set the JSON module to use ('simplejson', 'cjson', or 'json' are supported)
@@ -88,8 +88,8 @@ Map
 ^^^^^^^^^^^^^^^^^^^^^^^
 
 Map functions should take single argument as document dict object and emit
-two value list or tuple of key-value result. Normaly, you would like to
-use yield statement for emiting result:
+two value list or tuple of key-value result. Normally, you would like to
+use yield statement for emitting result:
 
 .. code-block:: python
 
@@ -110,7 +110,7 @@ to use ``return`` instead of ``yield``:
         if doc['type'] == 'post' and doc_has_tags:
             return [[tag.lower(), 1] for tag in doc['tags']]
 
-But you should remember, that emiting huge result in one shot consumes much
+But you should remember, that emitting huge result in one shot consumes much
 more memory than yielding it step by step.
 
 Each document object is `sealed` which means that it could changed without worry
@@ -124,7 +124,7 @@ result of map function - and optional third which signs if rereduce mode is
 active or not. There is third optional argument `rereduce` which signs is
 rereduce mode active or not.
 
-If ``reduce`` function result is twise longer than initial request than
+If ``reduce`` function result is twice longer than initial request than
 :exc:`~couchdb.server.exceptions.Error` exception would be raised.
 However, this behavior could be disabled by setting reduce_limit to False
 in CouchDB sever config (see query_server_config options section).
@@ -177,12 +177,12 @@ procession:
     - method (`unicode` or `list`): Request method as unicode string for
       `HEAD`, `GET`, `POST`, `PUT`, `DELETE`, `OPTIONS` and `TRACE` values and
       as list of char codes for others.
-    - requested_path: Actual requrested path if it was rewrited.
+    - requested_path: Actual requested path if it was rewritted.
     - path (`list`): List of path string chunks.
     - query (`dict`): URL query parameters. Note that multiple keys not
       supported and last key value suppress others.
     - headers (`dict`): Request headers.
-    - body (`unicode`): Requert body. For `GET` requests contains ``undefined``
+    - body (`unicode`): Request body. For `GET` requests contains ``undefined``
       string value.
     - peer (`unicode`): Request source IP address.
     - form (`dict`): Decoded body to key-value pairs if `Content-Type` header
@@ -203,18 +203,18 @@ procession:
 Response object
 ^^^^^^^^^^^^^^^^^^^^^^^
 
-`Response object` as dict object that design functions (actualy, :ref:`render`
-ones) should return to CouchDB which transforms them into fullfil HTTP response:
+`Response object` as dict object that design functions (actually, :ref:`render`
+ones) should return to CouchDB which transforms them into fulfill HTTP response:
 
     - code (`int`): Response HTTP status code.
-    - json (`dict or list`): JSON encodable object. Automaticly sets
+    - json (`dict or list`): JSON encodable object. Automatically sets
       `Content-Type` header as ``application/json``.
-    - body (`unicode`): Unicode response string. Automaticly sets `Content-Type`
+    - body (`unicode`): Unicode response string. Automatically sets `Content-Type`
       header as ``text/html; charset=utf-8``.
-    - base64 (`string`): Base64 encoded string. Automaticly sets `Content-Type`
+    - base64 (`string`): Base64 encoded string. Automatically sets `Content-Type`
       header as ``application/binary``.
     - headers (`dict`): Response headers dict. `Content-Type` headers from this
-      set overrides any automaticly assigned one.
+      set overrides any automatically assigned one.
     - stop (`bool`): Signal for lists to stop iteration over view result rows.
 
 Note, that ``body``, ``base64`` and ``json`` keys are overlaps each other and
@@ -223,7 +223,7 @@ could create a confusing situation. Try to use only one of them.
 
 Any other dict key would raise CouchDB internal exception.
 Also `Response object` could be a simple unicode string value which would be
-automaticly wraped into ``{'body': ...}`` dict.
+automatically wrapped into ``{'body': ...}`` dict.
 
 .. _dbinfo:
 
@@ -301,7 +301,7 @@ Modules are the major CouchDB feature since 0.11.0 version which allows to
 create modular design functions without needs to duplicate a lot of same
 functionality. This is implementation of CommonJS
 `Modules <http://wiki.commonjs.org/wiki/Modules/1.1.1>`_ specification by
-:func:`~couchdb.server.compiler.require` function which is avaliable for all
+:func:`~couchdb.server.compiler.require` function which is available for all
 :ref:`ddoc` functions.
 
 Example of stored module:
@@ -332,10 +332,10 @@ Each stored modules have access to additional global variables:
         - id (`unicode`): Module id by which it always could be "required".
         - current (`code`): Module compiled code object.
         - parent (`dict`): Parent frame.
-        - exports (`dict`): Exported statements which would be accessable within
+        - exports (`dict`): Exported statements which would be accessible within
           design functions.
     - require (`function`): Require function with relative point started at
-      curent module.
+      current module.
     - exports (`dict`): Shortcut to ``module['exports']`` dictionary.
 
 Lets place module above within design document under "lib/validate" path. This
@@ -366,7 +366,7 @@ Eggs
 
 As unique feature of Python query server there is support of
 `eggs <http://peak.telecommunity.com/DevCenter/PythonEggs>`_ as modules. This
-feature could be activated manualy by query server ``--enable-eggs`` command
+feature could be activated manualдy by query server ``--enable-eggs`` command
 line argument due to compatibility and security reasons: eggs could contains
 a very complex code that could be revised from the first sight.
 

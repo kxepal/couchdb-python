@@ -155,14 +155,14 @@ def require(ddoc):
     :return: Require function object.
 
     Require function extracts export statements from stored module within
-    design document. It could be used to access shared libriaries of common used
-    functions, however it's avaliable only for DDoc function set.
+    design document. It could be used to access shared libraries of common used
+    functions, however it's available only for DDoc function set.
 
     This function is from CommonJS world and works by detailed
     `specification <http://wiki.commonjs.org/wiki/Modules/1.1.1>`_.
 
-    :param path: Path to stored module throught document structure fields.
-    :param module: Current execution context. Normaly, you wouldn't used this
+    :param path: Path to stored module through document structure fields.
+    :param module: Current execution context. Normally, you wouldn't used this
         argument.
     :type path: basestring
     :type module: dict
@@ -202,7 +202,7 @@ def require(ddoc):
         >>>     return True
 
     .. versionadded:: 0.11.0
-    .. versionchanged:: 1.1.0 Avaiable for map functions if add_lib
+    .. versionchanged:: 1.1.0 Available for map functions if add_lib
         command proceeded.
     '''
     _visited_ids = []

@@ -28,7 +28,7 @@ def run_validate(func, *args):
     return 1
 
 def validate(func, newdoc, olddoc, userctx):
-    '''Implemention of `validate` command.
+    '''Implementation of `validate` command.
 
     :command: validate
 
