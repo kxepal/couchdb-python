@@ -127,10 +127,10 @@ def run_show(func, doc, req):
 def run_update(func, doc, req):
     try:
         method = req['method']
-        if method == 'GET':
-            log.error('update functions do not allow GET')
+        if not state.allow_get_update and method == 'GET':
+            log.error('Method `GET` is not allowed for update functions')
             raise Error('method_not_allowed',
-                        'update functions do not allow GET')
+                        'Method `GET` is not allowed for update functions')
         doc, resp = func(doc, req)
         if isinstance(resp, (dict, basestring)):
             return ['up', doc, maybe_wrap_response(resp)]

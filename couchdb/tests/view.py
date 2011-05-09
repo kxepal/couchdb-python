@@ -1362,6 +1362,82 @@ class UpdateTestCase(QueryServerMixIn, TestFuncsMixIn):
         else:
             test_versions_for_0_11_0_and_later()
 
+    def test_update_get_requests_not_allowed(self):
+        ''' should fail for GET requests '''
+        def test_version_before_0_10_0():
+            fun = self.funs['update_basic']
+            self.qs.reset()
+            self.qs.send(['update', fun, {'foo': 'gnarly'}, {'method': 'GET'}])
+            resp = self.qs.recv()
+            self.assertEqual(resp, {'error': 'unknown_command',
+                                    'reason': 'unknown command update'})
+            self.assertEqual(self.qs.close(), 1)
+
+        def test_versions_since_0_10_0_till_0_11_0():
+            fun = self.funs['update_basic']
+            self.qs.reset()
+            self.qs.send(['update', fun, {'foo': 'gnarly'}, {'method': 'GET'}])
+            resp = self.qs.recv()
+            self.assertTrue('error' in resp)
+            self.assertEqual(resp['error'], 'method_not_allowed')
+
+        def test_versions_for_0_11_0_and_later():
+            fun = self.funs['update_basic']
+            ddoc = make_ddoc(['updates', 'basic'], fun)
+            self.qs.teach_ddoc(ddoc)
+            self.qs.send_ddoc(ddoc, ['updates', 'basic'],
+                                    [{'foo': 'gnarly'}, {'method': 'GET'}])
+            resp = self.qs.recv()
+            self.assertEqual(resp[0], 'error')
+            self.assertEqual(resp[1], 'method_not_allowed')
+
+        if COUCHDB_VERSION < (0, 10, 0):
+            test_version_before_0_10_0()
+        elif COUCHDB_VERSION < (0, 11, 0):
+            test_versions_since_0_10_0_till_0_11_0()
+        else:
+            test_versions_for_0_11_0_and_later()
+
+    def test_update_get_requests_enabled_by_cmdline_argument(self):
+        ''' should fail for GET requests '''
+        def test_version_before_0_10_0():
+            fun = self.funs['update_basic']
+            self.qs.reset()
+            self.qs.send(['update', fun, {'foo': 'gnarly'}, {'method': 'GET'}])
+            resp = self.qs.recv()
+            self.assertEqual(resp, {'error': 'unknown_command',
+                                    'reason': 'unknown command update'})
+            self.assertEqual(self.qs.close(), 1)
+
+        def test_versions_since_0_10_0_till_0_11_0():
+            fun = self.funs['update_basic']
+            self.qs.reset()
+            self.qs.send(['update', fun, {'foo': 'gnarly'}, {'method': 'GET'}])
+            up, doc, resp = self.qs.recv()
+            self.assertEqual(up, 'up')
+            self.assertEqual(doc, {'foo': 'gnarly', 'world': 'hello'})
+            self.assertEqual(resp['body'], 'hello, doc')
+
+        def test_versions_for_0_11_0_and_later():
+            fun = self.funs['update_basic']
+            ddoc = make_ddoc(['updates', 'basic'], fun)
+            self.qs.teach_ddoc(ddoc)
+            self.qs.send_ddoc(ddoc, ['updates', 'basic'],
+                                    [{'foo': 'gnarly'}, {'method': 'GET'}])
+            up, doc, resp = self.qs.recv()
+            self.assertEqual(up, 'up')
+            self.assertEqual(doc, {'foo': 'gnarly', 'world': 'hello'})
+            self.assertEqual(resp['body'], 'hello, doc')
+
+        self.qs.close()
+        self.qs.__init__(VIEW_SERVER, COUCHDB_VERSION, '--allow-get-update')
+        if COUCHDB_VERSION < (0, 10, 0):
+            test_version_before_0_10_0()
+        elif COUCHDB_VERSION < (0, 11, 0):
+            test_versions_since_0_10_0_till_0_11_0()
+        else:
+            test_versions_for_0_11_0_and_later()
+
 class ListTestCase(QueryServerMixIn, TestFuncsMixIn):
 
     def functions(self):

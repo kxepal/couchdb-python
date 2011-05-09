@@ -41,6 +41,7 @@ Options:
   --log-file=<file>       log file path.
   --log-level=<level>     specify logging level (debug, info, warn, error).
                           Used info level if omitted.
+  --allow-get-update      allows GET requests to call update functions.
   --enable-eggs           enables support of eggs as modules.
   --egg-cache=<path>      specifies egg cache dir. If omitted, PYTHON_EGG_CACHE
                           environment variable value would be used or system
@@ -63,7 +64,7 @@ def main():
         option_list, argument_list = getopt.gnu_getopt(
             sys.argv[1:], 'h',
             ['version', 'help', 'json-module=', 'log-level=', 'log-file=',
-             'couchdb-version=', 'enable-eggs', 'egg-cache']
+             'couchdb-version=', 'enable-eggs', 'egg-cache', 'allow-get-update']
         )
         version = None
         message = None
@@ -79,6 +80,8 @@ def main():
                 qs_config['log_level'] = value.upper()
             elif option in ['--log-file']:
                 qs_config['log_file'] = value
+            elif option in ['--allow-get-update']:
+                qs_config['allow_get_update'] = True
             elif option in ['--enable-eggs']:
                 qs_config['enable_eggs'] = True
             elif option in ['--egg-cache']:

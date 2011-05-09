@@ -55,6 +55,10 @@ class QueryServer(object):
 
         self.commands = {}
 
+        allow_get_update = config.pop('allow_get_update', False)
+        if allow_get_update:
+            state.allow_get_update = True
+
         enable_eggs = config.pop('enable_eggs', False)
         if enable_eggs:
             state.enable_eggs = True
