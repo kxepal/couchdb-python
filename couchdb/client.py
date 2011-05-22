@@ -159,9 +159,17 @@ class Server(object):
         status, headers, data = self.resource.get_json()
         return data['version']
 
-    def stats(self):
-        """Database statistics."""
-        status, headers, data = self.resource.get_json('_stats')
+    def stats(self, name=None):
+        """Server statistics.
+
+        :param name: name of single statistic, e.g. httpd/requests
+                     (None -- return all statistics)
+        """
+        if not name:
+            resource = self.resource('_stats')
+        else:
+            resource = self.resource('_stats', *name.split('/'))
+        status, headers, data = resource.get_json()
         return data
 
     def tasks(self):
@@ -282,7 +290,7 @@ class Database(object):
         :return: `True` if a document with the ID exists, `False` otherwise
         """
         try:
-            self.resource.head(id)
+            _doc_resource(self.resource, id).head()
             return True
         except http.ResourceNotFound:
             return False
@@ -309,8 +317,9 @@ class Database(object):
 
         :param id: the document ID
         """
-        status, headers, data = self.resource.head(id)
-        self.resource.delete_json(id, rev=headers['etag'].strip('"'))
+        resource = _doc_resource(self.resource, id)
+        status, headers, data = resource.head()
+        resource.delete_json(rev=headers['etag'].strip('"'))
 
     def __getitem__(self, id):
         """Return the document with the specified ID.
@@ -319,7 +328,7 @@ class Database(object):
         :return: a `Row` object representing the requested document
         :rtype: `Document`
         """
-        _, _, data = self.resource.get_json(id)
+        _, _, data = _doc_resource(self.resource, id).get_json()
         return Document(data)
 
     def __setitem__(self, id, content):
@@ -330,7 +339,8 @@ class Database(object):
                         new documents, or a `Row` object for existing
                         documents
         """
-        status, headers, data = self.resource.put_json(id, body=content)
+        resource = _doc_resource(self.resource, id)
+        status, headers, data = resource.put_json(body=content)
         content.update({'_id': data['id'], '_rev': data['rev']})
 
     @property
@@ -401,7 +411,7 @@ class Database(object):
         :rtype: `tuple`
         """
         if '_id' in doc:
-            func = self.resource(doc['_id']).put_json
+            func = _doc_resource(self.resource, doc['_id']).put_json
         else:
             func = self.resource.post_json
         _, _, data = func(body=doc, **options)
@@ -521,7 +531,7 @@ class Database(object):
         """
         if doc['_id'] is None:
             raise ValueError('document ID cannot be None')
-        self.resource.delete_json(doc['_id'], rev=doc['_rev'])
+        _doc_resource(self.resource, doc['_id']).delete_json(rev=doc['_rev'])
 
     def get(self, id, default=None, **options):
         """Return the document with the specified ID.
@@ -534,7 +544,7 @@ class Database(object):
         :rtype: `Document`
         """
         try:
-            _, _, data = self.resource.get_json(id, **options)
+            _, _, data = _doc_resource(self.resource, id).get_json(**options)
         except http.ResourceNotFound:
             return default
         if hasattr(data, 'items'):
@@ -550,7 +560,8 @@ class Database(object):
                  in reverse chronological order, if any were found
         """
         try:
-            status, headers, data = self.resource.get_json(id, revs=True)
+            resource = _doc_resource(self.resource, id)
+            status, headers, data = resource.get_json(revs=True)
         except http.ResourceNotFound:
             return
 
@@ -595,7 +606,7 @@ class Database(object):
         :param filename: the name of the attachment file
         :since: 0.4.1
         """
-        resource = self.resource(doc['_id'])
+        resource = _doc_resource(self.resource, doc['_id'])
         _, _, data = resource.delete_json(filename, rev=doc['_rev'])
         doc['_rev'] = data['rev']
 
@@ -617,7 +628,7 @@ class Database(object):
         else:
             id = id_or_doc['_id']
         try:
-            _, _, data = self.resource(id).get(filename)
+            _, _, data = _doc_resource(self.resource, id).get(filename)
             return data
         except http.ResourceNotFound:
             return default
@@ -651,7 +662,7 @@ class Database(object):
                 filter(None, mimetypes.guess_type(filename))
             )
 
-        resource = self.resource(doc['_id'])
+        resource = _doc_resource(self.resource, doc['_id'])
         status, headers, data = resource.put_json(filename, body=content, headers={
             'Content-Type': content_type
         }, rev=doc['_rev'])
@@ -811,11 +822,42 @@ class Database(object):
         :return: the view results
         :rtype: `ViewResults`
         """
-        if not name.startswith('_'):
-            design, name = name.split('/', 1)
-            name = '/'.join(['_design', design, '_view', name])
-        return PermanentView(self.resource(*name.split('/')), name,
+        path = _path_from_name(name, '_view')
+        return PermanentView(self.resource(*path), '/'.join(path),
                              wrapper=wrapper)(**options)
+
+    def show(self, name, docid=None, **options):
+        """Call a 'show' function.
+
+        :param name: the name of the show function in the format
+                     ``designdoc/showname``
+        :param docid: optional ID of a document to pass to the show function.
+        :param options: optional query string parameters
+        :return: (headers, body) tuple, where headers is a dict of headers
+                 returned from the show function and body is a readable
+                 file-like instance
+        """
+        path = _path_from_name(name, '_show')
+        if docid:
+            path.append(docid)
+        status, headers, body = self.resource(*path).get(**options)
+        return headers, body
+
+    def list(self, name, view, **options):
+        """Format a view using a 'list' function.
+
+        :param name: the name of the list function in the format
+                     ``designdoc/listname``
+        :param view: the name of the view in the format ``designdoc/viewname``
+        :param options: optional query string parameters
+        :return: (headers, body) tuple, where headers is a dict of headers
+                 returned from the list function and body is a readable
+                 file-like instance
+        """
+        path = _path_from_name(name, '_list')
+        path.extend(view.split('/', 1))
+        _, headers, body = _call_viewlike(self.resource(*path), options)
+        return headers, body
 
     def _changes(self, **opts):
         _, _, data = self.resource.get('_changes', **opts)
@@ -838,6 +880,26 @@ class Database(object):
             return self._changes(**opts)
         _, _, data = self.resource.get_json('_changes', **opts)
         return data
+
+
+def _doc_resource(base, doc_id):
+    """Return the resource for the given document id.
+    """
+    # Split an id that starts with a reserved segment, e.g. _design/foo, so
+    # that the / that follows the 1st segment does not get escaped.
+    if doc_id[:1] == '_':
+        return base(*doc_id.split('/', 1))
+    return base(doc_id)
+
+
+def _path_from_name(name, type):
+    """Expand a 'design/foo' style name to its full path as a list of
+    segments.
+    """
+    if name.startswith('_'):
+        return name.split('/')
+    design, name = name.split('/', 1)
+    return ['_design', design, type, name]
 
 
 class Document(dict):
@@ -885,15 +947,6 @@ class View(object):
     def __iter__(self):
         return iter(self())
 
-    def _encode_options(self, options):
-        retval = {}
-        for name, value in options.items():
-            if name in ('key', 'startkey', 'endkey') \
-                    or not isinstance(value, basestring):
-                value = json.encode(value)
-            retval[name] = value
-        return retval
-
     def _exec(self, options):
         raise NotImplementedError
 
@@ -909,13 +962,7 @@ class PermanentView(View):
         return '<%s %r>' % (type(self).__name__, self.name)
 
     def _exec(self, options):
-        if 'keys' in options:
-            options = options.copy()
-            keys = {'keys': options.pop('keys')}
-            _, _, data = self.resource.post_json(body=keys,
-                                                 **self._encode_options(options))
-        else:
-            _, _, data = self.resource.get_json(**self._encode_options(options))
+        _, _, data = _call_viewlike(self.resource, options)
         return data
 
 
@@ -949,8 +996,32 @@ class TemporaryView(View):
         content = json.encode(body).encode('utf-8')
         _, _, data = self.resource.post_json(body=content, headers={
             'Content-Type': 'application/json'
-        }, **self._encode_options(options))
+        }, **_encode_view_options(options))
         return data
+
+
+def _encode_view_options(options):
+    """Encode any items in the options dict that are sent as a JSON string to a
+    view/list function.
+    """
+    retval = {}
+    for name, value in options.items():
+        if name in ('key', 'startkey', 'endkey') \
+                or not isinstance(value, basestring):
+            value = json.encode(value)
+        retval[name] = value
+    return retval
+
+
+def _call_viewlike(resource, options):
+    """Call a resource that takes view-like options.
+    """
+    if 'keys' in options:
+        options = options.copy()
+        keys = {'keys': options.pop('keys')}
+        return resource.post_json(body=keys, **_encode_view_options(options))
+    else:
+        return resource.get_json(**_encode_view_options(options))
 
 
 class ViewResults(object):
