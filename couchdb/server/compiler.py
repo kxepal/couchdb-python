@@ -289,7 +289,7 @@ def compile_func(funstr, ddoc=None):
         exec bytecode in context, globals_
     except Exception, err:
         log.exception('Failed to compile function\n%s', funstr)
-        raise Error('compilation_error', err)
+        raise Error('compilation_error', str(err))
     msg = None
     func = None
     for item in globals_.values():
@@ -306,5 +306,5 @@ def compile_func(funstr, ddoc=None):
         msg = 'Expression does not eval to a function'
     if msg is not None:
         log.error('%s\n%s', msg, funstr)
-        raise Error('compilation_error', '%s' % msg)
+        raise Error('compilation_error', msg)
     return func

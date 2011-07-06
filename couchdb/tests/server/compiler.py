@@ -290,6 +290,7 @@ class CompilerTestCase(unittest.TestCase):
         except Exception, err:
             self.assertTrue(isinstance(err, exceptions.Error))
             self.assertEqual(err.args[0], 'compilation_error')
+            self.assertTrue(isinstance(err.args[1], basestring))
 
     def test_fail_for_runtime_error_on_compilation(self):
         funsrc = '1/0'
