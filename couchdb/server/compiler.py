@@ -14,16 +14,19 @@ try:
 except ImportError:
     try:
         # Python 2.4
-        from pkg_resources import get_importer
-    except ImportError:
-        iter_modules = None
-    else:
+        from pkg_resources import get_importer, zipimport
         def iter_modules(paths):
             for path in paths:
                 loader = get_importer(path)
+                if not isinstance(loader, zipimport.zipimporter):
+                    continue
                 names = loader.get_data('EGG-INFO/top_level.txt')
                 for name in names.split('\n')[:-1]:
                     yield loader, name, None
+    except ImportError:
+        get_importer = None
+        iter_modules = None
+        zipimport = None
 
 __all__ = ['compile_func', 'require', 'context']
 
