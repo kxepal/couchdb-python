@@ -36,6 +36,9 @@ context = {}
 
 _code_type = type(compile('', '<string>', 'exec'))
 
+class EggExports(dict):
+    """Sentinel for egg export statements."""
+
 def resolve_module(names, mod, root=None):
     def helper():
         return ('\n    id: %r'
@@ -48,7 +51,7 @@ def resolve_module(names, mod, root=None):
     parent = mod.get('parent')
     current = mod.get('current')
     if not names:
-        if not isinstance(current, (basestring, _code_type)):
+        if not isinstance(current, (basestring, _code_type, EggExports)):
             raise Error('invalid_require_path',
                         'Must require Python string or code object,'
                         ' not %r' % current)
@@ -136,7 +139,7 @@ def import_b64egg(b64egg):
             egg = os.fdopen(hegg, 'wb')
             egg.write(base64.b64decode(b64egg))
             egg.close()
-            exports = dict(
+            exports = EggExports(
                 [(name, loader.load_module(name))
                  for loader, name, ispkg in iter_modules([egg_path])]
             )
@@ -243,7 +246,8 @@ def require(ddoc):
                     prev[item] = bytecode or egg
                 elif isinstance(source, _code_type):
                     bytecode = source
-                elif isinstance(source, dict):
+                else:
+                    assert isinstance(source, EggExports), repr(new_module)
                     exports = source
                 if bytecode is not None:
                     exec bytecode in module_context, globals_
