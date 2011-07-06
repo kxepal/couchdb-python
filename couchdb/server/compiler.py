@@ -233,7 +233,8 @@ def require(ddoc):
                 if isinstance(source, basestring):
                     egg = import_b64egg(source)
                     if egg is None:
-                        bytecode = compile(source, '<string>', 'exec')
+                        bytecode = compile(source.replace('\r\n', '\n'),
+                                           '<string>', 'exec')
                     else:
                         exports = egg
                     point = ddoc
@@ -284,7 +285,7 @@ def compile_func(funstr, ddoc=None):
         context.pop('require')
     try:
         # compile + exec > exec
-        bytecode = compile(funstr, '<string>', 'exec')
+        bytecode = compile(funstr.replace('\r\n', '\n'), '<string>', 'exec')
         exec bytecode in context, globals_
     except Exception, err:
         log.exception('Failed to compile function\n%s', funstr)
