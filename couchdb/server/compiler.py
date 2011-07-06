@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 #
-'''Proceeds query server function compilation within special context.'''
+"""Proceeds query server function compilation within special context."""
 import base64
 import os
 import logging
@@ -101,7 +101,7 @@ def resolve_module(names, mod, root=None):
     })
 
 def import_b64egg(b64egg):
-    '''Imports top level namespace from base64 encoded egg file.
+    """Imports top level namespace from base64 encoded egg file.
 
     For Python 2.4 `setuptools <http://pypi.python.org/pypi/setuptools>`_
     package required.
@@ -111,7 +111,7 @@ def import_b64egg(b64egg):
 
     :return: Egg top level namespace or None if egg import disabled.
     :rtype: dict
-    '''
+    """
     global state
     # Quick and dirty check for base64 encoded zipfile.
     # Saves time and IO operations in most cases.
@@ -153,7 +153,7 @@ def import_b64egg(b64egg):
             os.unlink(egg_path)
 
 def require(ddoc):
-    '''Wraps design ``require`` function with access to design document.
+    """Wraps design ``require`` function with access to design document.
 
     :param ddoc: Design document.
     :type ddoc: dict
@@ -210,7 +210,7 @@ def require(ddoc):
     .. versionadded:: 0.11.0
     .. versionchanged:: 1.1.0 Available for map functions if add_lib
         command proceeded.
-    '''
+    """
     _visited_ids = []
     def require(path, module=None):
         log.debug('Importing objects from %s', path)
@@ -221,7 +221,7 @@ def require(ddoc):
                       ' DDoc id `%s` ; call stack: %r',
                       ddoc.get('_id'), _visited_ids)
             del _visited_ids[:]
-            raise RuntimeError('Circular require calls deadlock occured')
+            raise RuntimeError('Circular require calls deadlock occurred')
         _visited_ids.append(new_module['id'])
         source = new_module['current']
         globals_ = {
@@ -266,7 +266,7 @@ def require(ddoc):
     return require
 
 def compile_func(funstr, ddoc=None):
-    '''Compile source code and extract function object from it.
+    """Compile source code and extract function object from it.
 
     :param funstr: Python source code.
     :param ddoc: Optional argument which must represent design document.
@@ -275,11 +275,16 @@ def compile_func(funstr, ddoc=None):
 
     :return: Function object.
 
-    :raise Error: If compilation was not succeeded.
+    :raises:
+        - :exc:`~couchdb.server.exceptions.Error`
+          If compilation source code failed or it doesn't contains on function
+          definition.
 
-    .. note:: ``funstr`` should contains only one function definition and nothing
-        else except imported modules. Otherwise Error exception would be raised.
-    '''
+    .. note::
+        ``funstr`` should contains only one function definition and import
+         statements (optional) or :exc:`~couchdb.server.exceptions.Error`
+         will be raised.
+    """
     log.debug('Compiling code to function:\n%s', funstr)
     funstr = BOM_UTF8 + funstr.encode('utf-8')
     globals_ = {}
@@ -301,7 +306,7 @@ def compile_func(funstr, ddoc=None):
             if func is None:
                 func = item
             else:
-                msg = 'Mutiple functions are defined. Only one is allowed.'
+                msg = 'Multiple functions are defined. Only one is allowed.'
         elif not isinstance(item, ModuleType):
             msg = 'Only functions could be defined at top level namespace'
         if msg is not None:
