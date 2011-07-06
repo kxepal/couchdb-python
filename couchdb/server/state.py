@@ -1,10 +1,10 @@
 # -*- coding: utf-8 -*-
 #
-'''Holds Query Server state.'''
+"""Holds Query Server state."""
 import logging
 from couchdb.server.compiler import compile_func
 
-__all__ = ['add_fun', 'add_lib', 'reset', 'line_length', 'functions',
+__all__ = ['init', 'add_fun', 'add_lib', 'reset', 'line_length', 'functions',
            'functions_src', 'query_config', 'version', 'enable_eggs',
            'egg_cache', 'allow_get_update']
 
@@ -29,8 +29,16 @@ egg_cache = None
 #: Allows GET requests to update functions
 allow_get_update = False
 
+def init():
+    """Resets query server state and wipes all config options."""
+    global view_lib, line_length, version, \
+           enable_eggs, egg_cache,  allow_get_update
+    view_lib = version = enable_eggs = egg_cache = allow_get_update = None
+    line_length = 0
+    reset()
+
 def reset(config=None):
-    '''Resets view server state.
+    """Resets query server state.
 
     :command: reset
 
@@ -39,7 +47,7 @@ def reset(config=None):
 
     :return: True
     :rtype: bool
-    '''
+    """
     del functions[:]
     del functions_src[:]
     query_config.clear()
@@ -48,7 +56,7 @@ def reset(config=None):
     return True
 
 def add_fun(funstr):
-    '''Compiles and adds function to state cache.
+    """Compiles and adds function to state cache.
 
     :command: add_fun
 
@@ -57,7 +65,7 @@ def add_fun(funstr):
 
     :return: True
     :rtype: bool
-    '''
+    """
     if version >= (1, 1, 0):
         ddoc = {'views': {'lib': view_lib}}
         functions.append(compile_func(funstr, ddoc))
@@ -67,7 +75,7 @@ def add_fun(funstr):
     return True
 
 def add_lib(lib):
-    '''Add lib to state which could be used within views that allows usage
+    """Add lib to state which could be used within views that allows usage
     require function within maps one to import shared objects.
 
     :command: add_lib
@@ -79,7 +87,7 @@ def add_lib(lib):
     :rtype: bool
 
     .. versionadded:: 1.1.0
-    '''
+    """
     global view_lib
     view_lib = lib
     return True
