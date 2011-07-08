@@ -87,7 +87,8 @@ def reduce(reduce_funs, kvs, rereduce=False):
         else:
             reductions.append(result)
 
-    reduce_len = len(reductions)
+    reduce_line = json.encode(reductions)
+    reduce_len = len(reduce_line)
     reduce_limit = state.query_config.get('reduce_limit', False)
     size_overflowed = (reduce_len * 2) > state.line_length
 
