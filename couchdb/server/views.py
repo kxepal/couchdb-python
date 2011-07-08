@@ -11,7 +11,7 @@ __all__ = ['map_doc', 'reduce', 'rereduce']
 log = logging.getLogger(__name__)
 
 def map_doc(doc):
-    '''Applies available map functions to document.
+    """Applies available map functions to document.
 
     :command: map_doc
 
@@ -22,8 +22,8 @@ def map_doc(doc):
 
     :raises:
         - :exc:`~couchdb.server.exceptions.Error`
-          If any Python exception occurres due mapping.
-    '''
+          If any Python exception occurs due mapping.
+    """
     docid = doc.get('_id')
     log.debug('Running map functions for doc._id `%s`', docid)
     map_results = []
@@ -32,7 +32,7 @@ def map_doc(doc):
         try:
             result = [[key, value] for key, value in function(doc) or []]
         except ViewServerException:
-            log.exception('Query server exception occured, aborting operation')
+            log.exception('Query server exception occurred, aborting operation')
             raise
         except Exception, err:
             msg = 'Map function raised error for doc._id `%s`\n%s\n'
@@ -51,7 +51,7 @@ def map_doc(doc):
     return map_results
 
 def reduce(reduce_funs, kvs, rereduce=False):
-    '''Reduces mapping result.
+    """Reduces mapping result.
 
     :command: reduce
 
@@ -67,9 +67,9 @@ def reduce(reduce_funs, kvs, rereduce=False):
 
     :raises:
         - :exc:`~couchdb.server.exceptions.Error`
-          If any Python exception occurres or reduce ouput is twice longer
-          as state.line_length and reduce_limit is enabled in state.query_config.
-    '''
+          If any Python exception occurs or reduce output is twice longer
+          as state.line_length and reduce_limit is enabled in state.query_config
+    """
     reductions = []
     keys, values = rereduce and (None, kvs) or zip(*kvs) or ([],[])
     args = (keys, values, rereduce)
@@ -78,7 +78,7 @@ def reduce(reduce_funs, kvs, rereduce=False):
             function = compile_func(funstr)
             result = function(*args[:function.func_code.co_argcount])
         except ViewServerException:
-            log.exception('Query server exception occured, aborting operation')
+            log.exception('Query server exception occurred, aborting operation')
             raise
         except Exception, err:
             msg = 'Reduce function raised an error'
@@ -93,8 +93,7 @@ def reduce(reduce_funs, kvs, rereduce=False):
     size_overflowed = (reduce_len * 2) > state.line_length
 
     if reduce_limit and reduce_len > 200  and size_overflowed:
-        reduce_line = json.encode(reductions)
-        msg = "Reduce output must shirnk more rapidly:\n"\
+        msg = "Reduce output must shrink more rapidly:\n"\
               "Current output: '%s'... "\
               "(first 100 of %d bytes)" % (reduce_line[:100], reduce_len)
         log.error(msg)
@@ -102,7 +101,7 @@ def reduce(reduce_funs, kvs, rereduce=False):
     return [True, reductions]
 
 def rereduce(reduce_funs, values):
-    '''Rereduces mapping result
+    """Rereduces mapping result
 
     :command: rereduce
 
@@ -116,7 +115,7 @@ def rereduce(reduce_funs, values):
 
     :raises:
         - :exc:`~couchdb.server.exceptions.Error`
-          If any Python exception occurres or reduce ouput is twice longer
-          as state.line_length and reduce_limit is enabled in state.query_config.
-    '''
+          If any Python exception occurs or reduce output is twice longer
+          as state.line_length and reduce_limit is enabled in state.query_config
+    """
     return reduce(reduce_funs, values, rereduce=True)
