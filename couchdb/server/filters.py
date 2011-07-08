@@ -21,7 +21,7 @@ def run_filter_view(func, docs):
     return [True, result]
 
 def filter(docs, req, userctx=None):
-    '''Implementation of `filter` command. Should be prequested by ``add_fun``
+    """Implementation of `filter` command. Should be preceded  by ``add_fun``
     command.
 
     :command: filter
@@ -42,11 +42,11 @@ def filter(docs, req, userctx=None):
     .. deprecated:: 0.11.0
         Now is a subcommand of :ref:`ddoc`.
         Use :func:`~couchdb.server.filters.ddoc_filter` instead.
-    '''
+    """
     return run_filter(state.functions[0], docs, req, userctx)
 
 def ddoc_filter(func, docs, req, userctx=None):
-    '''Implementation of ddoc `filters` command.
+    """Implementation of ddoc `filters` command.
 
     :command: filters
 
@@ -67,7 +67,7 @@ def ddoc_filter(func, docs, req, userctx=None):
     .. versionadded:: 0.11.0
     .. versionchanged:: 0.11.1
         Removed ``userctx`` argument. Use ``req['userctx']`` instead.
-    '''
+    """
     if state.version < (0, 11, 1):
         args = req, userctx
     else:
@@ -75,7 +75,7 @@ def ddoc_filter(func, docs, req, userctx=None):
     return run_filter(func, docs, *args)
 
 def ddoc_views(func, docs):
-    '''Implementation of ddoc `views` command. Filters ``_changes`` feed using
+    """Implementation of ddoc `views` command. Filters ``_changes`` feed using
     view map function.
 
     :command: views
@@ -91,5 +91,5 @@ def ddoc_views(func, docs):
         GET /db/_changes?filter=_view&view=design_name/view_name
 
     .. versionadded:: 1.1.0
-    '''
+    """
     return run_filter_view(func, docs)
