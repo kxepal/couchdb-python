@@ -2,13 +2,14 @@
 #
 import unittest
 
-from couchdb.tests.server import compiler, state
+from couchdb.tests.server import compiler, state, views
 
 
 def suite():
     suite = unittest.TestSuite()
     suite.addTest(compiler.suite())
     suite.addTest(state.suite())
+    suite.addTest(views.suite())
     return suite
 
 
