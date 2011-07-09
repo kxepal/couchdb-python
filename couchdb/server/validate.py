@@ -28,7 +28,7 @@ def run_validate(func, *args):
     return 1
 
 def validate(func, newdoc, olddoc, userctx):
-    '''Implementation of `validate` command.
+    """Implementation of `validate` command.
 
     :command: validate
 
@@ -48,11 +48,11 @@ def validate(func, newdoc, olddoc, userctx):
     .. deprecated:: 0.11.0
         Now is a subcommand of :ref:`ddoc`.
         Use :func:`~couchdb.server.validate.ddoc_validate` instead.
-    '''
+    """
     return run_validate(compile_func(func), newdoc, olddoc, userctx)
 
 def ddoc_validate(func, newdoc, olddoc, userctx, secobj=None):
-    '''Implemention of ddoc `validate_doc_update` command.
+    """Implemention of ddoc `validate_doc_update` command.
 
     :command: validate_doc_update
 
@@ -72,7 +72,7 @@ def ddoc_validate(func, newdoc, olddoc, userctx, secobj=None):
 
     .. versionadded:: 0.9.0
     .. versionchanged:: 0.11.1 Added argument ``secobj``.
-    '''
+    """
     args = newdoc, olddoc, userctx, secobj
     if state.version >= (0, 11, 1):
         if func.func_code.co_argcount == 3:
