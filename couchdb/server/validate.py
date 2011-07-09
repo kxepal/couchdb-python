@@ -3,7 +3,7 @@
 import logging
 from couchdb.server import state
 from couchdb.server.compiler import compile_func
-from couchdb.server.exceptions import Forbidden
+from couchdb.server.exceptions import Forbidden, Error, ViewServerException
 
 __all__ = ['validate', 'ddoc_validate']
 
@@ -25,6 +25,14 @@ def run_validate(func, *args):
         func(*args)
     except (AssertionError, Forbidden), err:
         handle_error(err, args[2])
+    except ViewServerException, err:
+        log.exception('%s exception raised by %s validate_doc_update function'
+                      '' % (err.__class__.__name__, func.__name__))
+        raise
+    except Exception, err:
+        log.exception('Something went wrong at %s validate_doc_update function'
+                      '' % func.__name__)
+        raise Error(err.__class__.__name__, str(err))
     return 1
 
 def validate(func, newdoc, olddoc, userctx):

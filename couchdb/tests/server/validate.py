@@ -68,6 +68,27 @@ class ValidateTestCase(unittest.TestCase):
         )
         state.version = None
 
+    def test_viewserver_exception(self):
+        """should rethow ViewServerException as is"""
+        def validatefun(newdoc, olddoc, userctx):
+            raise exceptions.FatalError('validation', 'failed')
+        try:
+            validate.ddoc_validate(validatefun, {}, {}, {})
+        except Exception, err:
+            self.assertTrue(isinstance(err, exceptions.FatalError))
+            self.assertEqual(err.args[0], 'validation')
+            self.assertEqual(err.args[1], 'failed')
+
+    def test_python_exception(self):
+        """should raise Error exception instead of Python one to keep QS alive"""
+        def validatefun(newdoc, olddoc, userctx):
+            return foo
+        try:
+            validate.ddoc_validate(validatefun, {}, {}, {})
+        except Exception, err:
+            self.assertTrue(isinstance(err, exceptions.Error))
+            self.assertEqual(err.args[0], 'NameError')
+
 
 def suite():
     suite = unittest.TestSuite()
