@@ -129,7 +129,8 @@ def run_provides(req):
         accept = req['headers'].get('Accept')
     if 'query' in req and 'format' in req['query']:
         bestkey = req['query']['format']
-        resp_content_type = mimes_by_key[bestkey][0]
+        if bestkey in mimes_by_key:
+            resp_content_type = mimes_by_key[bestkey][0]
     elif accept:
         supported_mimes = (mime
                    for key in funcs_by_key
