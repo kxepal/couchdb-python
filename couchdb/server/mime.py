@@ -57,7 +57,7 @@ def best_match(supported, header):
     for i, item in enumerate(supported):
         weighted.append([fitness_and_quality(item, header), i, item])
     weighted.sort()
-    return weighted[-1][0][1] and weighted[-1][2] or ''
+    return weighted and weighted[-1][0][1] and weighted[-1][2] or ''
 
 
 ################################################################################
