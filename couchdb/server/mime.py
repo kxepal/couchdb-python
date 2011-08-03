@@ -79,11 +79,12 @@ def reset_provides():
     funcs_by_key.clear()
 
 def register_type(key, *args):
-    '''Register mimetypes.
+    """Register MIME types.
 
-    :param key: Shorthand key for mimetypes. Actually you would like
-        to use extension name associated with mime types e.g. js
-    :param args: full quality names of mime types.
+    :param key: Shorthand key for list of MIME types.
+    :type key: str
+
+    :param args: List of full quality names of MIME types.
 
     Predefined types:
         - all: ``*/*``
@@ -105,20 +106,21 @@ def register_type(key, *args):
 
     Example:
         >>> register_type('png', 'image/png')
-    '''
+    """
     mimes_by_key[key] = args
     for item in args:
         keys_by_mime[item] = key
 
 def provides(key, func):
-    '''Register mimetype handler which will be called when design function would
-    be requested with matched Content-Type value.
+    """Register MIME type handler which will be called when design function
+    would be requested with matched `Content-Type` value.
 
-    :param key: Mimetype.
+    :param key: MIME type.
+    :type key: str
+
     :param func: Function object or any callable.
-    :type key: basestring
-    :type key: function or callable
-    '''
+    :type func: function or callable
+    """
     funcs_by_key[key] = func
 
 def run_provides(req):
