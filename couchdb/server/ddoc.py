@@ -13,7 +13,7 @@ ddocs = {}
 commands = {}
 
 def ddoc(*args):
-    '''Prepares proceeding of :ref:`render` / :ref:`filters` / :ref:`validate`
+    """Prepares proceeding of :ref:`render` / :ref:`filters` / :ref:`validate`
     functions.
 
     Also holds cache of design documents, but ddoc must have to be
@@ -47,7 +47,7 @@ def ddoc(*args):
 
     .. versionadded:: 0.11.0
     .. versionchanged:: 1.1.0 Support for views subcommand.
-    '''
+    """
     args = list(args)
     ddoc_id = args.pop(0)
     if ddoc_id == 'new':
@@ -68,7 +68,8 @@ def ddoc(*args):
         log.debug('Processing DDoc command `%s`', cmd)
         if cmd not in commands:
             log.error('Unknown ddoc command `%s`' % cmd)
-            raise FatalError('unknown_command', 'unknown ddoc command `%s`' % cmd)
+            raise FatalError('unknown_command',
+                             'unknown ddoc command `%s`' % cmd)
         handler = commands[cmd]
         point = ddoc
         for item in fun_path:
