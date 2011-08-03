@@ -39,8 +39,9 @@ def fitness_and_quality(mimetype, ranges):
         type_preq = type == base_type or '*' in [type, base_type]
         subtype_preq = subtype == base_subtype or '*' in [subtype, base_subtype]
         if type_preq and subtype_preq:
-            match_count = sum((1 for k, v in base_params.items()
-                              if k != 'q' and params.get(k) == v))
+            match_count = sum(
+                1 for k, v in base_params.items()
+                if k != 'q' and params.get(k) == v)
             fitness = type == base_type and 100 or 0
             fitness += subtype == base_subtype and 10 or 0
             fitness += match_count
@@ -133,9 +134,9 @@ def run_provides(req):
             resp_content_type = mimes_by_key[bestkey][0]
     elif accept:
         supported_mimes = (mime
-                   for key in funcs_by_key
-                   for mime in mimes_by_key[key]
-                   if key in mimes_by_key)
+           for key in funcs_by_key
+           for mime in mimes_by_key[key]
+           if key in mimes_by_key)
         resp_content_type = best_match(supported_mimes, accept)
         bestkey = keys_by_mime.get(resp_content_type)
     else:
@@ -144,11 +145,11 @@ def run_provides(req):
         bestfun = funcs_by_key.get(bestkey)
     if bestfun is not None:
         return bestfun()
-    supported_types = [', '.join(value) or key
-                       for key, value in mimes_by_key.items()]
+    supported_types = ','.join(
+        ', '.join(value) or key for key, value in mimes_by_key.items())
     raise Error('not_acceptable',
                 'Content-Type %s not supported, try one of:\n'
-                '%s' % (accept or bestkey, ', '.join(supported_types)))
+                '%s' % (accept or bestkey, supported_types))
 
 # Some default types
 # Ported from Ruby on Rails
@@ -161,7 +162,8 @@ types = {
     'html': ['text/html; charset=utf-8'],
     'xhtml': ['application/xhtml+xml', 'xhtml'],
     'xml': ['application/xml', 'text/xml', 'application/x-xml'],
-    'js': ['text/javascript', 'application/javascript', 'application/x-javascript'],
+    'js': ['text/javascript', 'application/javascript',
+           'application/x-javascript'],
     'css': ['text/css'],
     'ics': ['text/calendar'],
     'csv': ['text/csv'],
