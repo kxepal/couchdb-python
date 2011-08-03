@@ -65,16 +65,17 @@ def best_match(supported, header):
 
 mimes_by_key = {}
 keys_by_mime = {}
-mimefuns = []
+funcs_by_key = {}
 resp_content_type = None
 
+
 def provides_used():
-    return bool(mimefuns)
+    return bool(funcs_by_key)
 
 def reset_provides():
     global resp_content_type
     resp_content_type = None
-    del mimefuns[:]
+    funcs_by_key.clear()
 
 def register_type(key, *args):
     '''Register mimetypes.
@@ -108,20 +109,19 @@ def register_type(key, *args):
     for item in args:
         keys_by_mime[item] = key
 
-def provides(type, func):
+def provides(key, func):
     '''Register mimetype handler which will be called when design function would
     be requested with matched Content-Type value.
 
-    :param type: Mimetype.
+    :param key: Mimetype.
     :param func: Function object or any callable.
-    :type type: basestring
-    :type type: function or callable
+    :type key: basestring
+    :type key: function or callable
     '''
-    mimefuns.append((type, func))
+    funcs_by_key[key] = func
 
 def run_provides(req):
     global resp_content_type
-    supported_mimes = []
     bestfun = None
     bestkey = None
     accept = None
@@ -131,19 +131,16 @@ def run_provides(req):
         bestkey = req['query']['format']
         resp_content_type = mimes_by_key[bestkey][0]
     elif accept:
-        for mimefun in reversed(mimefuns):
-            mimekey = mimefun[0]
-            if mimes_by_key.get(mimekey) is not None:
-                supported_mimes.extend(mimes_by_key[mimekey])
+        supported_mimes = (mime
+                   for key in funcs_by_key
+                   for mime in mimes_by_key[key]
+                   if key in mimes_by_key)
         resp_content_type = best_match(supported_mimes, accept)
         bestkey = keys_by_mime.get(resp_content_type)
     else:
-        bestkey = mimefuns[0][0]
+        bestkey = funcs_by_key and funcs_by_key.keys()[0] or None
     if bestkey is not None:
-        for item in mimefuns:
-            if item[0] == bestkey:
-                bestfun = item[1]
-                break
+        bestfun = funcs_by_key.get(bestkey)
     if bestfun is not None:
         return bestfun()
     supported_types = [', '.join(value) or key
