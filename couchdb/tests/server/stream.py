@@ -4,7 +4,6 @@ import unittest
 from StringIO import StringIO
 from couchdb.server import exceptions
 from couchdb.server import stream
-from couchdb.server import state
 
 
 class StreamTestCase(unittest.TestCase):
@@ -16,13 +15,6 @@ class StreamTestCase(unittest.TestCase):
         self.assertEqual(reader.next(), ['foo', 'bar'])
         self.assertEqual(reader.next(), ['bar', {'foo': 'baz'}])
         self.assertRaises(StopIteration, reader.next)
-
-    def test_update_last_line_length(self):
-        """should update last line length info"""
-        input = StringIO('["foo", "bar"]\n["bar", {"foo": "baz"}]')
-        reader = stream.receive(input)
-        reader.next()
-        self.assertEqual(state.line_length, len('["foo", "bar"]\n'))
 
     def test_fail_on_receive_invalid_json_data(self):
         """should raise FatalError if json decode fails"""
