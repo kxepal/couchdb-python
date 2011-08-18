@@ -4,30 +4,21 @@
 import logging
 import sys
 from couchdb import json
-from couchdb.server import state
 from couchdb.server.exceptions import FatalError
 
-__all__ = ['input', 'output', 'receive', 'respond', 'last_line']
+__all__ = ['receive', 'respond']
 
 log = logging.getLogger(__name__)
 
-#: Input data stream. By default: sys.stdin
-input = sys.stdin
-#: Output data stream. By default: sys.stdout
-output = sys.stdout
-
-def receive():
+def receive(input=sys.stdin):
     """Yields json decoded line from input stream.
+
+    :param input: Iterable input stream of valid json encoded data.
 
     :yields: JSON decoded object.
     :rtype: list
     """
-    while True:
-        line = input.readline()
-        state.line_length = len(line)
-        if not line:
-            log.debug('No more data in stream.')
-            break
+    for line in input:
         log.debug('Data received:\n%s', line)
         try:
             yield json.decode(line)
@@ -35,11 +26,13 @@ def receive():
             log.exception('Unable to decode json data: %s', line)
             raise FatalError('json_decode', str(err))
 
-def respond(obj):
+def respond(obj, output=sys.stdout):
     """Writes json encoded object to output stream.
 
     :param obj: JSON encodable object.
     :type obj: dict or list
+
+    :param output: Output file-like object.
     """
     log.debug('Data to respond:\n%s', obj)
     try:
