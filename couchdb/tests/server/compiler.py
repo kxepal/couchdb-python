@@ -2,7 +2,6 @@
 #
 import types
 import unittest
-from couchdb.server import state
 from couchdb.server import compiler
 from couchdb.server import exceptions
 
@@ -79,25 +78,22 @@ class DDocModulesTestCase(unittest.TestCase):
         require = compiler.require(ddoc)
         exports = require('foo/bar/baz')
         self.assertEqual(exports['answer'], 42)
-        bytecode_type = type(compile('', '<string>', 'exec'))
-        self.assertTrue(isinstance(ddoc['foo']['bar']['baz'], bytecode_type))
+        self.assertTrue(isinstance(ddoc['foo']['bar']['baz'], types.CodeType))
         exports = require('foo/bar/baz')
         self.assertEqual(exports['answer'], 42)
 
     def test_cache_egg_exports(self):
-        state.enable_eggs = True
         ddoc = {
             'lib': {
                 'universe': DUMMY_EGG
             }
         }
-        require = compiler.require(ddoc)
+        require = compiler.require(ddoc, enable_eggs=True)
         exports = require('lib/universe')
         self.assertEqual(exports['universe'].question.get_answer(), 42)
         self.assertTrue(isinstance(ddoc['lib']['universe'], dict))
         exports = require('lib/universe')
         self.assertEqual(exports['universe'].question.get_answer(), 42)
-        state.enable_eggs = False
 
     def test_fail_on_resolving_deadlock(self):
         ddoc = {
@@ -118,6 +114,13 @@ class DDocModulesTestCase(unittest.TestCase):
         }
         require = compiler.require(ddoc)
         self.assertRaises(exceptions.Error, require, 'lib/utils')
+
+    def test_invalid_require_path_error_type(self):
+        try:
+            compiler.resolve_module('/'.split('/'), {}, {})
+        except Exception, err:
+            self.assertTrue(isinstance(err, exceptions.Error))
+            self.assertEqual(err.args[0], 'invalid_require_path')
 
     def test_fail_on_slash_started_path(self):
         module = {'foo': {'bar': {'baz': '42'}}}
@@ -170,20 +173,13 @@ class DDocModulesTestCase(unittest.TestCase):
 
 class EggModulesTestCase(unittest.TestCase):
 
-    def setUp(self):
-        state.enable_eggs = True
-
-    def tearDown(self):
-        state.enable_eggs = False
-
     def test_require_egg(self):
         exports = compiler.import_b64egg(DUMMY_EGG)
         self.assertEqual(exports['universe'].question.get_answer(), 42)
 
     def test_fail_for_invalid_egg(self):
         egg = 'UEsDBBQAAAAIAKx1qD6TBtcyAwAAAAEAAAAdAAAARUdHLUlORk8vZGVwZW5kZW=='
-        exports = compiler.import_b64egg(egg)
-        #self.assertRaises(ImportError, compiler.import_b64egg, egg)
+        self.assertRaises(ImportError, compiler.import_b64egg, egg)
 
     def test_fail_for_invalid_b64egg_string(self):
         egg = 'UEsDBBQAAAAIAKx1qD6TBtcyAwAAAAEAAAAdAAAARUdHLUlORk8vZGVwZW5kZW'
@@ -191,12 +187,6 @@ class EggModulesTestCase(unittest.TestCase):
 
     def test_pattern_mismatch_returns_nothing(self):
         egg = 'foo'
-        exports = compiler.import_b64egg(egg)
-        self.assertEqual(exports, None)
-
-    def test_return_nothing_for_disabled_eggs_support(self):
-        state.enable_eggs = False
-        egg = 'UEsDBBQAAAAIAKx1qD6TBtcyAwAAAAEAAAAdAAAARUdHLUlORk8vZGVwZW5kZW=='
         exports = compiler.import_b64egg(egg)
         self.assertEqual(exports, None)
 
@@ -300,19 +290,41 @@ class CompilerTestCase(unittest.TestCase):
             self.assertTrue(isinstance(err, exceptions.Error))
             self.assertEqual(err.args[0], 'compilation_error')
 
+    def test_default_context(self):
+        funsrc = (
+            'def test():\n'
+            '  return json.encode(42)\n'
+            'assert issubclass(Error, Exception)\n'
+            'assert issubclass(FatalError, Exception)\n'
+            'assert issubclass(Forbidden, Exception)')
+        func = compiler.compile_func(funsrc)
+        self.assertEqual(func(), '42')
+
+    def test_extend_default_context(self):
+        import math
+        funsrc = (
+            'def test():\n'
+            '  return json.encode(int(math.sqrt(1764)))\n'
+        )
+        func = compiler.compile_func(funsrc, context={'math': math})
+        self.assertEqual(func(), '42')
+
     def test_add_require_context_function_if_ddoc_specified(self):
-        self.assertTrue('require' not in compiler.context)
-        funsrc = 'def test():\r\n\treturn "test\\r\\npassed"'
+        funsrc = (
+            'def test(): pass\n'
+            'assert isinstance(require, object)'
+        )
         compiler.compile_func(funsrc, {'foo': 'bar'})
-        self.assertTrue('require' in compiler.context)
 
     def test_remove_require_context_function_if_ddoc_missed(self):
-        self.assertTrue('require' not in compiler.context)
-        funsrc = 'def test():\r\n\treturn "test\\r\\npassed"'
-        compiler.compile_func(funsrc, {'foo': 'bar'})
-        self.assertTrue('require' in compiler.context)
+        funsrc = (
+            'def test(): pass\n'
+            'try:'
+            '  assert isinstance(require, object)\n'
+            'except NameError:\n'
+            '  pass'
+        )
         compiler.compile_func(funsrc)
-        self.assertTrue('require' not in compiler.context)
 
 
 def suite():

@@ -6,9 +6,11 @@ import os
 import logging
 import tempfile
 from codecs import BOM_UTF8
-from types import FunctionType
+from types import CodeType, FunctionType
 from types import ModuleType
-from couchdb.server.exceptions import Error
+from couchdb.server.exceptions import Error, FatalError, Forbidden
+from couchdb import json
+
 try:
     from pkgutil import iter_modules
 except ImportError:
@@ -31,13 +33,18 @@ except ImportError:
 __all__ = ['compile_func', 'require', 'context']
 
 log = logging.getLogger(__name__)
-state = None
-context = {}
 
-_code_type = type(compile('', '<string>', 'exec'))
+DEFAULT_CONTEXT = {
+    'Error': Error,
+    'FatalError': FatalError,
+    'Forbidden': Forbidden,
+    'json': json,
+}
+
 
 class EggExports(dict):
     """Sentinel for egg export statements."""
+
 
 def resolve_module(names, mod, root=None):
     def helper():
@@ -51,7 +58,7 @@ def resolve_module(names, mod, root=None):
     parent = mod.get('parent')
     current = mod.get('current')
     if not names:
-        if not isinstance(current, (basestring, _code_type, EggExports)):
+        if not isinstance(current, (basestring, CodeType, EggExports)):
             raise Error('invalid_require_path',
                         'Must require Python string or code object,'
                         ' not %r' % current)
@@ -100,7 +107,7 @@ def resolve_module(names, mod, root=None):
         'id': (id is not None) and (id + '/' + n) or n
     })
 
-def import_b64egg(b64egg):
+def import_b64egg(b64egg, egg_cache=None):
     """Imports top level namespace from base64 encoded egg file.
 
     For Python 2.4 `setuptools <http://pypi.python.org/pypi/setuptools>`_
@@ -112,19 +119,13 @@ def import_b64egg(b64egg):
     :return: Egg top level namespace or None if egg import disabled.
     :rtype: dict
     """
-    global state
     # Quick and dirty check for base64 encoded zipfile.
     # Saves time and IO operations in most cases.
     if not b64egg.startswith('UEsDBBQAAAAIA'):
         return None
-    if state is None:
-        # circular import dependency resolve
-        from couchdb.server import state
-    if not state.enable_eggs:
-        return None
     egg = None
-    exports = None
-    egg_cache = (state.egg_cache
+    egg_path = None
+    egg_cache = (egg_cache
                  or os.environ.get('PYTHON_EGG_CACHE')
                  or os.path.join(tempfile.gettempdir(), '.python-eggs'))
     try:
@@ -147,12 +148,14 @@ def import_b64egg(b64egg):
             log.exception('Egg import failed')
             raise
         else:
+            if not exports:
+                raise ImportError('Nothing to export.')
             return exports
     finally:
         if egg is not None and os.path.exists(egg_path):
             os.unlink(egg_path)
 
-def require(ddoc):
+def require(ddoc, context=None, **options):
     """Wraps design ``require`` function with access to design document.
 
     :param ddoc: Design document.
@@ -211,6 +214,7 @@ def require(ddoc):
     .. versionchanged:: 1.1.0 Available for map functions if add_lib
         command proceeded.
     """
+    context = context or DEFAULT_CONTEXT.copy()
     _visited_ids = []
     def require(path, module=None):
         log.debug('Importing objects from %s', path)
@@ -234,7 +238,10 @@ def require(ddoc):
             try:
                 bytecode = None
                 if isinstance(source, basestring):
-                    egg = import_b64egg(source)
+                    egg = None
+                    if options.get('enable_eggs', False):
+                        egg_cache = options.get('egg_cache', None)
+                        egg = import_b64egg(source, egg_cache)
                     if egg is None:
                         bytecode = compile(source.replace('\r\n', '\n'),
                                            '<string>', 'exec')
@@ -244,7 +251,7 @@ def require(ddoc):
                     for item in new_module['id'].split('/'):
                         prev, point = point, point.get(item)
                     prev[item] = bytecode or egg
-                elif isinstance(source, _code_type):
+                elif isinstance(source, CodeType):
                     bytecode = source
                 else:
                     assert isinstance(source, EggExports), repr(new_module)
@@ -253,7 +260,6 @@ def require(ddoc):
                     exec bytecode in module_context, globals_
                     exports = globals_.get('exports', {})
             except Error, err:
-                err.__init__('compilation_error', err.args[1])
                 raise
             except Exception, err:
                 log.exception('Compilation error')
@@ -265,13 +271,19 @@ def require(ddoc):
                 _visited_ids.pop()
     return require
 
-def compile_func(funstr, ddoc=None):
+def compile_func(funstr, ddoc=None, context=None, **options):
     """Compile source code and extract function object from it.
 
     :param funstr: Python source code.
-    :param ddoc: Optional argument which must represent design document.
     :type funstr: unicode
+
+    :param ddoc: Optional argument which must represent design document.
     :type ddoc: dict
+
+    :param context: Custom context objects which function could operate with.
+    :type context: dict
+    
+    :param options: Compiler config options.
 
     :return: Function object.
 
@@ -285,11 +297,16 @@ def compile_func(funstr, ddoc=None):
          statements (optional) or :exc:`~couchdb.server.exceptions.Error`
          will be raised.
     """
+    if not context:
+        context = DEFAULT_CONTEXT.copy()
+    else:
+        context, _ = DEFAULT_CONTEXT.copy(), context
+        context.update(_)
     log.debug('Compiling code to function:\n%s', funstr)
     funstr = BOM_UTF8 + funstr.encode('utf-8')
     globals_ = {}
     if ddoc is not None:
-        context['require'] = require(ddoc)
+        context['require'] = require(ddoc, context, **options)
     elif 'require' in context:
         context.pop('require')
     try:
