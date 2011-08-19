@@ -1,46 +1,18 @@
 # -*- coding: utf-8 -*-
 #
-"""Holds Query Server state."""
 import logging
-from couchdb.server.compiler import compile_func
 
-__all__ = ['init', 'add_fun', 'add_lib', 'reset', 'line_length', 'functions',
-           'functions_src', 'query_config', 'version', 'enable_eggs',
-           'egg_cache', 'allow_get_update']
+__all__ = ['add_fun', 'add_lib', 'reset']
 
 log = logging.getLogger(__name__)
 
-view_lib = None
-#: Line length of current input string
-line_length = 0
-#: List of functions objects placed by add_fun command.
-functions = []
-#: List of functions source code placed by add_fun command.
-functions_src = []
-#: Query server configuration.
-query_config = {}
-#: Version of CouchDB server with which query server is compatible.
-#: Default: latest implemented.
-version = None
-#: Controls eggs support feature
-enable_eggs = False
-#: Specify eggs cache path. If omitted, system tempdir would be used.
-egg_cache = None
-#: Allows GET requests to update functions
-allow_get_update = False
-
-def init():
-    """Resets query server state and wipes all config options."""
-    global view_lib, line_length, version, \
-           enable_eggs, egg_cache,  allow_get_update
-    view_lib = version = enable_eggs = egg_cache = allow_get_update = None
-    line_length = 0
-    reset()
-
-def reset(config=None):
+def reset(server, config=None):
     """Resets query server state.
 
     :command: reset
+
+    :param server: Query server instance.
+    :type server: :class:`~couchdb.server.BaseQueryServer`
 
     :param config: Optional dict argument to set up query config.
     :type config: dict
@@ -48,37 +20,43 @@ def reset(config=None):
     :return: True
     :rtype: bool
     """
-    del functions[:]
-    del functions_src[:]
-    query_config.clear()
+    del server.state['functions'][:]
+    del server.state['functions_src'][:]
+    server.state['query_config'].clear()
     if config is not None:
-        query_config.update(config)
+        server.state['query_config'].update(config)
     return True
 
-def add_fun(funstr):
+def add_fun(server, funsrc):
     """Compiles and adds function to state cache.
 
     :command: add_fun
 
-    :param funstr: Python function as source string.
-    :type funstr: basestring
+    :param server: Query server instance.
+    :type server: :class:`~couchdb.server.BaseQueryServer`
+
+    :param funsrc: Python function as source string.
+    :type funsrc: basestring
 
     :return: True
     :rtype: bool
     """
-    if version >= (1, 1, 0):
-        ddoc = {'views': {'lib': view_lib}}
-        functions.append(compile_func(funstr, ddoc))
+    if server.version >= (1, 1, 0):
+        ddoc = {'views': {'lib': server.state.get('view_lib', '')}}
     else:
-        functions.append(compile_func(funstr))
-    functions_src.append(funstr)
+        ddoc = None
+    server.state['functions'].append(server.compile(funsrc, ddoc))
+    server.state['functions_src'].append(funsrc)
     return True
 
-def add_lib(lib):
+def add_lib(server, lib):
     """Add lib to state which could be used within views that allows usage
     require function within maps one to import shared objects.
 
     :command: add_lib
+
+    :param server: Query server instance.
+    :type server: :class:`~couchdb.server.BaseQueryServer`
 
     :param lib: Python source code which used require function protocol.
     :type lib: basestring
@@ -88,6 +66,5 @@ def add_lib(lib):
 
     .. versionadded:: 1.1.0
     """
-    global view_lib
-    view_lib = lib
+    server.state['view_lib'] = lib
     return True
