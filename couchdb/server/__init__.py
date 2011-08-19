@@ -24,33 +24,6 @@ class NullHandler(logging.Handler):
         pass
 
 
-class ViewServerHandler(logging.Handler):
-
-    def __init__(self, version):
-        self.version = version
-        logging.Handler.__init__(self)
-
-    def emit(self, record):
-        """Logs message to CouchDB output stream.
-
-        Output format:
-            till 0.11.0 version: {"log": message}
-            since 0.11.0 version: ["log", message]
-        """
-        message = self.format(record)
-        if self.version < (0, 11, 0):
-            if message is None:
-                message = 'Error: attempting to log message of None'
-            if not isinstance(message, basestring):
-                message = json.encode(message)
-            res = {'log': message}
-        else:
-            if not isinstance(message, basestring):
-                message = json.encode(message)
-            res = ['log', message]
-        stream.respond(res)
-
-
 log = logging.getLogger(__name__)
 log.setLevel(logging.INFO)
 log.addHandler(NullHandler())
@@ -74,10 +47,6 @@ class BaseQueryServer(object):
         self._respond = partial(stream.respond, output=output)
         
         self._version = version or (999, 999, 999)
-
-        self._dfunc_log = logging.getLogger(__name__ + '.design_function')
-        self._dfunc_log.setLevel(logging.INFO)
-        self._dfunc_log.addHandler(ViewServerHandler(self.version))
 
         self._commands = {}
         self._commands_ddoc = {}
@@ -267,8 +236,23 @@ class BaseQueryServer(object):
         return self._respond(data)
 
     def log(self, message):
-        """Writes message to design function logging instance at INFO level."""
-        self._dfunc_log.info(message)
+        """Log message to CouchDB output stream.
+
+        Output format:
+            till 0.11.0 version: {"log": message}
+            since 0.11.0 version: ["log", message]
+        """
+        if self.version < (0, 11, 0):
+            if message is None:
+                message = 'Error: attempting to log message of None'
+            if not isinstance(message, basestring):
+                message = json.encode(message)
+            res = {'log': message}
+        else:
+            if not isinstance(message, basestring):
+                message = json.encode(message)
+            res = ['log', message]
+        self.respond(res)
 
     def compile(self, funsrc, ddoc=None, context=None, **options):
         """Compiles function with special server context.
