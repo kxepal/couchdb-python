@@ -1,7 +1,6 @@
 # -*- coding: utf-8 -*-
 #
 import logging
-from couchdb.server import state
 
 __all__ = ['filter', 'ddoc_filter', 'ddoc_views']
 
@@ -20,17 +19,22 @@ def run_filter_view(func, docs):
             result.append(False)
     return [True, result]
 
-def filter(docs, req, userctx=None):
+def filter(server, docs, req, userctx=None):
     """Implementation of `filter` command. Should be preceded  by ``add_fun``
     command.
 
     :command: filter
 
+    :param server: Query server instance.
+    :type server: :class:`~couchdb.server.BaseQueryServer`
+
     :param docs: List of documents each one of will be passed though filter.
-    :param req: Request info.
-    :param userctx: User info.
     :type docs: list
+
+    :param req: Request info.
     :type req: dict
+
+    :param userctx: User info.
     :type userctx: dict
 
     :return:
@@ -43,20 +47,26 @@ def filter(docs, req, userctx=None):
         Now is a subcommand of :ref:`ddoc`.
         Use :func:`~couchdb.server.filters.ddoc_filter` instead.
     """
-    return run_filter(state.functions[0], docs, req, userctx)
+    return run_filter(server.state['functions'][0], docs, req, userctx)
 
-def ddoc_filter(func, docs, req, userctx=None):
+def ddoc_filter(server, func, docs, req, userctx=None):
     """Implementation of ddoc `filters` command.
 
     :command: filters
 
+    :param server: Query server instance.
+    :type server: :class:`~couchdb.server.BaseQueryServer`
+
     :param func: Filter function object.
-    :param docs: List of documents each one of will be passed though filter.
-    :param req: Request info.
-    :param userctx: User info.
     :type func: function
+
+    :param docs: List of documents each one of will be passed though filter.
     :type docs: list
+
+    :param req: Request info.
     :type req: dict
+
+    :param userctx: User info.
     :type userctx: dict
 
     :return:
@@ -68,20 +78,26 @@ def ddoc_filter(func, docs, req, userctx=None):
     .. versionchanged:: 0.11.1
         Removed ``userctx`` argument. Use ``req['userctx']`` instead.
     """
-    if state.version < (0, 11, 1):
+    if server.version < (0, 11, 1):
         args = req, userctx
     else:
         args = req,
     return run_filter(func, docs, *args)
 
-def ddoc_views(func, docs):
+def ddoc_views(server, func, docs):
     """Implementation of ddoc `views` command. Filters ``_changes`` feed using
     view map function.
 
     :command: views
 
+    :param server: Query server instance.
+    :type server: :class:`~couchdb.server.BaseQueryServer`
+
     :param func: Map function object.
+    :type func: function
+
     :param docs: List of documents.
+    :type docs: list
 
     :return: Two element list of True and list of booleans which marks is
         view generated result for passed document or not.
