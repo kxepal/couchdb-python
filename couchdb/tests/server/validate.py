@@ -5,8 +5,8 @@ from textwrap import dedent
 from inspect import getsource
 from couchdb.server import compiler
 from couchdb.server import exceptions
-from couchdb.server import state
 from couchdb.server import validate
+from couchdb.server.mock import MockQueryServer
 
 class ValidateTestCase(unittest.TestCase):
 
@@ -20,26 +20,20 @@ class ValidateTestCase(unittest.TestCase):
                 raise Forbidden('bad doc')
 
         self.funsrc = dedent(getsource(validatefun))
-        compiler.context['Forbidden'] = exceptions.Forbidden
-        compiler.context['FatalError'] = exceptions.FatalError
-
-    def tearDown(self):
-        compiler.context.clear()
+        self.server = MockQueryServer()
 
     def test_validate(self):
         """should return 1 (int) on successful validation"""
-        self.assertEqual(
-            validate.validate(self.funsrc, {'is_good': True}, {}, {}),
-            1
-        )
+        result = validate.validate(
+            self.server, self.funsrc, {'is_good': True}, {}, {})
+        self.assertEqual(result, 1)
 
     def test_ddoc_validate(self):
         """should return 1 (int) on successful validation (0.11.0+ version)"""
         func = compiler.compile_func(self.funsrc, {})
-        self.assertEqual(
-            validate.ddoc_validate(func, {'is_good': True}, {}, {}),
-            1
-        )
+        result = validate.ddoc_validate(
+            self.server, func, {'is_good': True}, {}, {})
+        self.assertEqual(result, 1)
 
     def test_validate_failure(self):
         """should except Forbidden exception for graceful deny"""
@@ -47,7 +41,7 @@ class ValidateTestCase(unittest.TestCase):
         self.assertRaises(
             exceptions.Forbidden,
             validate.ddoc_validate,
-            func, {'is_good': False}, {}, {}
+            self.server, func, {'is_good': False}, {}, {}
         )
 
     def test_assertions(self):
@@ -56,7 +50,7 @@ class ValidateTestCase(unittest.TestCase):
         self.assertRaises(
             exceptions.Forbidden,
             validate.ddoc_validate,
-            func, {'is_good': False, 'try_assert': True}, {}, {}
+            self.server, func, {'is_good': False, 'try_assert': True}, {}, {}
         )
 
     def test_secobj(self):
@@ -66,19 +60,17 @@ class ValidateTestCase(unittest.TestCase):
             '    assert isinstance(secobj, dict)\n'
         )
         func = compiler.compile_func(funsrc, {})
-        state.version = (0, 11, 1)
-        self.assertEqual(validate.ddoc_validate(func, {}, {}, {}, {}), 1)
-        state.version = None
+        server = MockQueryServer((0, 11, 1))
+        result = validate.ddoc_validate(server, func, {}, {}, {}, {})
+        self.assertEqual(result, 1)
 
     def test_secobj_optional(self):
         """secobj argument could be optional"""
-        state.version = (0, 11, 1)
+        server = MockQueryServer((0, 11, 1))
         func = compiler.compile_func(self.funsrc, {})
-        self.assertEqual(
-            validate.ddoc_validate(func, {'is_good': True}, {}, {}, {}),
-            1
-        )
-        state.version = None
+        result = validate.ddoc_validate(
+            server, func, {'is_good': True}, {}, {}, {})
+        self.assertEqual(result, 1)
 
     def test_viewserver_exception(self):
         """should rethow ViewServerException as is"""
@@ -88,7 +80,7 @@ class ValidateTestCase(unittest.TestCase):
         )
         func = compiler.compile_func(funsrc, {})
         try:
-            validate.ddoc_validate(func, {}, {}, {})
+            validate.ddoc_validate(self.server, func, {}, {}, {})
         except Exception, err:
             self.assertTrue(isinstance(err, exceptions.FatalError))
             self.assertEqual(err.args[0], 'validation')
@@ -102,7 +94,7 @@ class ValidateTestCase(unittest.TestCase):
         )
         func = compiler.compile_func(funsrc, {})
         try:
-            validate.ddoc_validate(func, {}, {}, {})
+            validate.ddoc_validate(self.server, func, {}, {}, {})
         except Exception, err:
             self.assertTrue(isinstance(err, exceptions.Error))
             self.assertEqual(err.args[0], 'NameError')
