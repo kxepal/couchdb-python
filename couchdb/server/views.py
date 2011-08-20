@@ -3,7 +3,6 @@
 import logging
 from couchdb import json
 from couchdb.server.exceptions import ViewServerException, Error
-from couchdb.server.compiler import compile_func
 
 __all__ = ['map_doc', 'reduce', 'rereduce']
 
@@ -87,7 +86,7 @@ def reduce(server, reduce_funs, kvs, rereduce=False):
     args = (keys, values, rereduce)
     try:
         for funsrc in reduce_funs:
-            function = compile_func(funsrc)
+            function = server.compile(funsrc)
             result = function(*args[:function.func_code.co_argcount])
             reductions.append(result)
     except ViewServerException:
