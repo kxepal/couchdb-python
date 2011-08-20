@@ -155,7 +155,7 @@ class BaseQueryServer(object):
             retval = ['error'] + list(exc_value.args)
         self.respond(retval)
         log.critical('That was a critical error, exiting')
-        raise exc_value
+        raise
 
     def handle_qs_error(self, exc_type, exc_value, exc_traceback):
         """Handler for :exc:`~couchdb.server.exceptions.Error` exceptions.
@@ -201,7 +201,7 @@ class BaseQueryServer(object):
             retval = ['error', err_name, err_msg]
         self.respond(retval)
         log.critical('That was a critical error, exiting')
-        raise exc_value
+        raise
 
     def serve_forever(self):
         """Query server main loop. Runs forever or till input stream is opened.
