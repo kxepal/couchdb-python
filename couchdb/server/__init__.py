@@ -3,8 +3,9 @@
 import logging
 import sys
 from couchdb import json
-from couchdb.server import compiler, exceptions, stream
-from couchdb.server.helpers import partial
+from couchdb.server import compiler, ddoc, exceptions, filters, render, \
+                           state, stream, validate, views
+from couchdb.server.helpers import partial, maybe_extract_source
 
 
 class NullHandler(logging.Handler):
@@ -279,7 +280,7 @@ class BaseQueryServer(object):
             return self._process_request(message)
         except Exception:
             self.handle_exception(*sys.exc_info())
-
+    
     def _process_request(self, message):
         cmd, args = message.pop(0), message
         log.debug('Processing command `%s`', cmd)
@@ -291,3 +292,182 @@ class BaseQueryServer(object):
     def is_reduce_limited(self):
         """Checks if output of reduce function is limited."""
         return self.state['query_config'].get('reduce_limit', False)
+
+
+class SimpleQueryServer(BaseQueryServer):
+    """Implements Python query server with high level API."""
+
+    def __init__(self, *args, **kwargs):
+        super(SimpleQueryServer, self).__init__(*args, **kwargs)
+
+        self.commands['reset'] = state.reset
+        self.commands['add_fun'] = state.add_fun
+
+        self.commands['map_doc'] = views.map_doc
+        self.commands['reduce'] = views.reduce
+        self.commands['rereduce'] = views.rereduce
+
+        if (0, 9, 0) <= self.version < (0, 10, 0):
+            self.commands['show_doc'] = render.show_doc
+            self.commands['list_begin'] = render.list_begin
+            self.commands['list_row'] = render.list_row
+            self.commands['list_tail'] = render.list_tail
+            self.commands['validate'] = validate.validate
+
+        elif (0, 10, 0) <= self.version < (0, 11, 0):
+            self.commands['show'] = render.show
+            self.commands['list'] = render.list
+            self.commands['filter'] = filters.filter
+            self.commands['update'] = render.update
+            self.commands['validate'] = validate.validate
+
+        elif self.version >= (0, 11, 0):
+            ddoc_commands = {}
+            ddoc_commands['shows'] = render.ddoc_show
+            ddoc_commands['lists'] = render.ddoc_list
+            ddoc_commands['filters'] = filters.ddoc_filter
+            ddoc_commands['updates'] = render.ddoc_update
+            ddoc_commands['validate_doc_update'] = validate.ddoc_validate
+
+        if self.version >= (1, 1, 0):
+            self.commands['add_lib'] = state.add_lib
+            ddoc_commands['views'] = filters.ddoc_views
+
+        if self.version >= (0, 11, 0):
+            self.commands['ddoc'] = ddoc.DDoc(ddoc_commands)
+
+    def add_lib(self, mod):
+        return self._process_request(['add_lib', mod])
+
+    def add_fun(self, fun):
+        funsrc = maybe_extract_source(fun)
+        return self._process_request(['add_fun', funsrc])
+
+    def add_ddoc(self, ddoc):
+        return self._process_request(['ddoc', 'new', ddoc['_id'], ddoc])
+
+    def map_doc(self, doc):
+        return self._process_request(['map_doc', doc])
+
+    def reduce(self, funs, keysvalues):
+        funsrcs = map(maybe_extract_source, funs)
+        return self._process_request(['reduce', funsrcs, keysvalues])
+
+    def rereduce(self, funs, values):
+        funsrcs = map(maybe_extract_source, funs)
+        return self._process_request(['rereduce', funsrcs, values])
+
+    def reset(self, config=None):
+        if config:
+            return self._process_request(['reset', config])
+        else:
+            return self._process_request(['reset'])
+
+    def show_doc(self, fun, doc=None, req=None):
+        funsrc = maybe_extract_source(fun)
+        return self._process_request(['show_doc', funsrc, doc or {}, req or {}])
+
+    def list_old(self, fun, rows, head=None, req=None):
+        self.add_fun(fun)
+        head, req = head or {}, req or {}
+        yield self._process_request(['list_begin', head, req])
+        for row in rows:
+            yield self._process_request(['list_row', row, req])
+        yield self._process_request(['list_tail', req])
+
+    def show(self, fun, doc=None, req=None):
+        funsrc = maybe_extract_source(fun)
+        return self._process_request(['show', funsrc, doc or {}, req or {}])
+
+    def list(self, fun, rows, head=None, req=None):
+        self.reset()
+        self.add_fun(fun)
+
+        result, input_rows = [], []
+        for row in rows:
+            input_rows.append(['list_row', row])
+        input_rows.append(['list_end'])
+        input_rows = iter(input_rows)
+
+        _input, _output = self._receive, self._respond
+        self._receive, self._respond = (lambda: input_rows), result.append
+
+        self._process_request(['list', head or {}, req or {}])
+
+        self._receive, self._respond = _input, _output
+        return result
+
+    def update(self, func, doc=None, req=None):
+        funstr = maybe_extract_source(func)
+        return self._process_request(['update', funstr, doc or {}, req or {}])
+
+    def filter(self, func, docs, req=None):
+        self.reset()
+        self.add_fun(func)
+        return self._process_request(['filter', docs, req or {}])
+
+    def validate_doc_update(self, func, olddoc=None, newdoc=None, userctx=None):
+        funsrc = maybe_extract_source(func)
+        args = [olddoc or {}, newdoc or {}, userctx or {}]
+        return self._process_request(['validate', funsrc] + args)
+
+    def ddoc_cmd(self, ddoc_id, cmd, func_path, func_args):
+        assert isinstance(func_path, list)
+        assert isinstance(func_args, list)
+        if not func_path or func_path[0] != cmd:
+            func_path.insert(0, cmd)
+        return self._process_request(['ddoc',  ddoc_id, func_path, func_args])
+
+    def ddoc_show(self, ddoc_id, func_path, doc=None, req=None):
+        args =  [doc or {}, req or {}]
+        return self.ddoc_cmd(ddoc_id, 'shows', func_path, args)
+
+    def ddoc_list(self, ddoc_id, func_path, rows, head=None, req=None):
+        args = [head or {}, req or {}]
+
+        result, input_rows = [], []
+        for row in rows:
+            input_rows.append(['list_row', row])
+        input_rows.append(['list_end'])
+        input_rows = iter(input_rows)
+
+        _input, _output = self._receive, self._respond
+        self._receive, self._respond = (lambda: input_rows), result.append
+
+        self.ddoc_cmd(ddoc_id, 'lists', func_path, args)
+
+        self._receive, self._respond = _input, _output
+        return result
+
+    def ddoc_update(self, ddoc_id, func_path, doc=None, req=None):
+        args = [doc or {}, req or {}]
+        return self.ddoc_cmd(ddoc_id, 'updates', func_path, args)
+
+    def ddoc_filter(self, ddoc_id, func_path, docs, req=None, userctx=None):
+        args = [docs, req or {}, userctx or {}]
+        return self.ddoc_cmd(ddoc_id, 'filters', func_path, args)
+
+    def ddoc_filter_view(self, ddoc_id, func_path, docs):
+        assert isinstance(docs, list)
+        return self.ddoc_cmd(ddoc_id, 'views', func_path, docs)
+
+    def ddoc_validate_doc_update(self, ddoc_id, olddoc=None,
+                                 newdoc=None, userctx=None, secobj=None):
+        args = [olddoc or {}, newdoc or {}, userctx or {}, secobj or {}]
+        return self.ddoc_cmd(ddoc_id, 'validate_doc_update', [], args)
+
+    @property
+    def ddocs(self):
+        return self.commands['ddoc']
+
+    @property
+    def functions(self):
+        return self.state['functions']
+
+    @property
+    def query_config(self):
+        return self.state['query_config']
+
+    @property
+    def view_lib(self):
+        return self.state['view_lib']

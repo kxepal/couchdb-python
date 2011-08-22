@@ -12,14 +12,14 @@ import os
 import sys
 
 from couchdb import json
-from couchdb.server import construct_server
+from couchdb.server import SimpleQueryServer
 
 __all__ = ['main', 'run']
 __docformat__ = 'restructuredtext en'
 
 def run(input=sys.stdin, output=sys.stdout, version=None, **config):
-    qs = construct_server(version, **config)
-    return qs.run(input, output)
+    qs = SimpleQueryServer(version, input=input, output=output, **config)
+    return qs.serve_forever()
 
 _VERSION = """%(name)s - CouchDB Python %(version)s
 
