@@ -288,14 +288,17 @@ class BaseQueryServer(object):
               registered for processed command.
         """
         try:
-            cmd, args = message.pop(0), message
-            log.debug('Processing command `%s`', cmd)
-            if cmd not in self.commands:
-                raise exceptions.FatalError('unknown_command',
-                                            'unknown command %s' % cmd)
-            return self.commands[cmd](self, *args)
+            return self._process_request(message)
         except Exception:
             self.handle_exception(*sys.exc_info())
+
+    def _process_request(self, message):
+        cmd, args = message.pop(0), message
+        log.debug('Processing command `%s`', cmd)
+        if cmd not in self.commands:
+            raise exceptions.FatalError('unknown_command',
+                                        'unknown command %s' % cmd)
+        return self.commands[cmd](self, *args)
 
     def is_reduce_limited(self):
         """Checks if output of reduce function is limited."""
