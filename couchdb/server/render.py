@@ -26,8 +26,8 @@ class ChunkedReponder(object):
     def reset(self):
         self.gotrow = False
         self.lastrow = False
-        self.startresp.clear()
-        del self.chunks[:]
+        self.startresp = {}
+        self.chunks = []
 
     def get_row(self):
         """Yields a next row of view result."""
@@ -58,16 +58,15 @@ class ChunkedReponder(object):
         :param resp: Initial response. Optional.
         :type resp: dict
         """
-        self.startresp.clear()
-        self.startresp.update(resp or {})
-        del self.chunks[:]
+        self.startresp = resp or {}
+        self.chunks = []
 
     def send_start(self, resp_content_type):
         log.debug('Starting respond')
         resp = apply_content_type(self.startresp or {}, resp_content_type)
         self.write(['start', self.chunks, resp])
-        del self.chunks[:]
-        self.startresp.clear()
+        self.chunks = []
+        self.startresp = {}
 
     def send(self, chunk):
         """Sends an HTTP chunk to the client.
@@ -80,7 +79,7 @@ class ChunkedReponder(object):
     def blow_chunks(self, label='chunks'):
         log.debug('Sending chunks')
         self.write([label, self.chunks])
-        del self.chunks[:]
+        self.chunks = []
 
 def apply_context(func, **context):
     func.func_globals.update(context)
