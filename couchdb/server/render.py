@@ -1,53 +1,91 @@
 # -*- coding: utf-8 -*-
 #
 import logging
-import traceback
 from types import FunctionType
 from couchdb.server import mime
-from couchdb.server import state
-from couchdb.server import stream
-from couchdb.server.compiler import compile_func
 from couchdb.server.exceptions import Error, FatalError, ViewServerException
 from couchdb.server.helpers import partial
 
 __all__ = ['show', 'list', 'update',
            'show_doc', 'list_begin', 'list_row', 'list_tail',
-           'response_with', 'start', 'send', 'get_row']
+           'ChunkedReponder']
 
 log = logging.getLogger(__name__)
 
-chunks = []
-startresp = {}
-gotrow = False
-lastrow = False
+class ChunkedReponder(object):
+
+    def __init__(self, input, output, mime_provider):
+        self.gotrow = False
+        self.lastrow = False
+        self.startresp = {}
+        self.chunks = []
+        self.read = input
+        self.write = output
+        self.mime_provider = mime_provider
+
+    def reset(self):
+        self.gotrow = False
+        self.lastrow = False
+        self.startresp.clear()
+        del self.chunks[:]
+
+    def get_row(self):
+        """Yields a next row of view result."""
+        reader = self.read()
+        while True:
+            if self.lastrow:
+                break
+            if not self.gotrow:
+                self.gotrow = True
+                self.send_start(self.mime_provider.resp_content_type)
+            else:
+                self.blow_chunks()
+            try:
+                data = reader.next()
+            except StopIteration:
+                break
+            if data[0] == 'list_end':
+                self.lastrow = True
+                break
+            if data[0] != 'list_row':
+                log.error('Not a row `%s`' % data[0])
+                raise FatalError('list_error', 'not a row `%s`' % data[0])
+            yield data[1]
+
+    def start(self, resp=None):
+        """Initiate HTTP response.
+
+        :param resp: Initial response. Optional.
+        :type resp: dict
+        """
+        self.startresp.clear()
+        self.startresp.update(resp or {})
+        del self.chunks[:]
+
+    def send_start(self, resp_content_type):
+        log.debug('Starting respond')
+        resp = apply_content_type(self.startresp or {}, resp_content_type)
+        self.write(['start', self.chunks, resp])
+        del self.chunks[:]
+        self.startresp.clear()
+
+    def send(self, chunk):
+        """Sends an HTTP chunk to the client.
+
+        :param chunk: Response chunk object. Would be converted to unicode string.
+        :type chunk: unicode or utf-8 encoded string preferred.
+        """
+        self.chunks.append(unicode(chunk))
+
+    def blow_chunks(self, label='chunks'):
+        log.debug('Sending chunks')
+        self.write([label, self.chunks])
+        del self.chunks[:]
 
 def apply_context(func, **context):
     func.func_globals.update(context)
     func = FunctionType(func.func_code, func.func_globals)
     return func
-
-def reset_list():
-    global gotrow, lastrow
-    del chunks[:]
-    startresp.clear()
-    gotrow = False
-    lastrow = False
-
-def start(resp=None):
-    '''Initiate HTTP response.
-
-    :param resp: Initial response. Optional.
-    :type resp: dict
-    '''
-    startresp.clear()
-    startresp.update(resp or {})
-
-def send_start():
-    log.debug('Starting respond')
-    resp = apply_content_type(startresp or {}, mime.resp_content_type)
-    stream.respond(['start', chunks, resp])
-    del chunks[:]
-    startresp.clear()
 
 def apply_content_type(resp, resp_content_type):
     if not resp.get('headers'):
@@ -55,42 +93,6 @@ def apply_content_type(resp, resp_content_type):
     if resp_content_type and not resp['headers'].get('Content-Type'):
         resp['headers']['Content-Type'] = resp_content_type
     return resp
-
-def send(chunk):
-    '''Sends an HTTP chunk to the client.
-
-    :param chunk: Response chunk object. Would be converted to unicode string.
-    :type chunk: unicode or utf-8 encoded string preferred.
-    '''
-    chunks.append(unicode(chunk))
-
-def blow_chunks(label='chunks'):
-    log.debug('Sending chunks')
-    stream.respond([label, chunks])
-    del chunks[:]
-
-def get_row():
-    '''Yields a next row of view result.'''
-    global gotrow, lastrow
-    while True:
-        if lastrow:
-            break
-        if not gotrow:
-            gotrow = True
-            send_start()
-        else:
-            blow_chunks()
-        try:
-            data = stream.receive().next()
-        except StopIteration:
-            break
-        if data[0] == 'list_end':
-            lastrow = True
-            break
-        if data[0] != 'list_row':
-            log.error('Not a row `%s`' % data[0])
-            raise FatalError('list_error', 'not a row `%s`' % data[0])
-        yield data[1]
 
 def maybe_wrap_response(resp):
     if isinstance(resp, basestring):
@@ -101,95 +103,116 @@ def maybe_wrap_response(resp):
 def is_doc_request_path(info):
     return len(info['path']) > 5
 
-def run_show(func, doc, req):
+def run_show(server, func, doc, req):
     try:
-        reset_list()
-        mime.reset_provides()
+        mime_provider = mime.MimeProvider()
+        responder = ChunkedReponder(
+            server.receive, server.respond, mime_provider)
+        func = apply_context(
+            func,
+            register_type = mime_provider.register_type,
+            provides = mime_provider.provides,
+            start = responder.start,
+            send = responder.send,
+            get_row = responder.get_row
+        )
         resp = func(doc, req) or {}
-        if chunks:
+        if responder.chunks:
             resp = maybe_wrap_response(resp)
             if not 'headers' in resp:
                 resp['headers'] = {}
-            resp['headers'].update(startresp)
-            resp['body'] = ''.join(chunks) + resp.get('body', '')
-            reset_list()
-        if mime.provides_used():
-            resp = mime.run_provides(req)
+            for key, value in responder.startresp.items():
+                assert isinstance(key, basestring), 'invalid header name'
+                assert isinstance(value, basestring), 'invalid header value'
+                resp['headers'][key] = value
+            resp['body'] = ''.join(responder.chunks) + resp.get('body', '')
+            responder.reset()
+        if mime_provider.is_provides_used():
+            resp = mime_provider.run_provides(req)
             resp = maybe_wrap_response(resp)
-            resp = apply_content_type(resp, mime.resp_content_type)
-        if isinstance(resp, (dict, basestring)):
-            return ['resp', maybe_wrap_response(resp)]
-        else:
-            log.error('Invalid response object %r ; type: %r', resp, type(resp))
-            raise Error('render_error',
-                        'undefined response from show function')
+            resp = apply_content_type(resp, mime_provider.resp_content_type)
+        if not isinstance(resp, (dict, basestring)):
+            msg = 'Invalid response object %r ; type: %r' % (resp, type(resp))
+            log.error(msg)
+            raise Error('render_error', msg)
+        return ['resp', maybe_wrap_response(resp)]
     except ViewServerException:
         raise
     except Exception, err:
-        log.exception('Unexpected exception occured')
+        log.exception('Unexpected exception occurred')
         if doc is None and is_doc_request_path(req):
             raise Error('not_found', 'document not found')
         raise Error('render_error', str(err))
 
-def run_update(func, doc, req):
+def run_update(server, func, doc, req):
     try:
-        method = req['method']
-        if not state.allow_get_update and method == 'GET':
-            log.error('Method `GET` is not allowed for update functions')
-            raise Error('method_not_allowed',
-                        'Method `GET` is not allowed for update functions')
+        method = req.get('method', None)
+        if not server.config.get('allow_get_update', False) and method == 'GET':
+            msg = 'Method `GET` is not allowed for update functions'
+            log.error(msg)
+            raise Error('method_not_allowed', msg)
         doc, resp = func(doc, req)
         if isinstance(resp, (dict, basestring)):
             return ['up', doc, maybe_wrap_response(resp)]
         else:
-            log.error('Invalid response object %r ; type: %r', resp, type(resp))
-            raise Error('render_error',
-                        'undefined response from update function')
+            msg = 'Invalid response object %r ; type: %r' % (resp, type(resp))
+            log.error(msg)
+            raise Error('render_error', msg)
     except ViewServerException:
         raise
     except Exception, err:
-        log.exception('Unexpected exception occured')
+        log.exception('Unexpected exception occurred')
         raise Error('render_error', str(err))
 
-def run_list(func, head, req):
+def run_list(server, func, head, req):
     try:
-        mime.reset_provides()
-        reset_list()
+        mime_provider = mime.MimeProvider()
+        responder = ChunkedReponder(
+            server.receive, server.respond, mime_provider)
+        func = apply_context(
+            func,
+            register_type = mime_provider.register_type,
+            provides = mime_provider.provides,
+            start = responder.start,
+            send = responder.send,
+            get_row = responder.get_row
+        )
         tail = func(head, req)
-        if mime.provides_used():
-            tail = mime.run_provides(req)
-        if not gotrow:
-            for row in get_row():
+        if mime_provider.is_provides_used():
+            tail = mime_provider.run_provides(req)
+        if not responder.gotrow:
+            for row in responder.get_row():
                 break
         if tail is not None:
-            chunks.append(tail)
-        blow_chunks('end')
+            responder.send(tail)
+        responder.blow_chunks('end')
     except ViewServerException:
         raise
     except Exception, err:
-        log.exception('Unexpected exception occured')
+        log.exception('Unexpected exception occurred')
         raise Error('render_error', str(err))
 
-def list(head, req):
-    '''Implementation of `list` command. Should be prequested by ``add_fun``
+def list(server, head, req):
+    """Implementation of `list` command. Should be prequested by ``add_fun``
     command.
 
     :command: list
 
     :param head: View result information.
     :param req: Request info.
-    :type doc: dict
+    :type head: dict
     :type req: dict
 
     .. versionadded:: 0.10.0
     .. deprecated:: 0.11.0
         Now is a subcommand of :ref:`ddoc`.
         Use :func:`~couchdb.server.render.ddoc_list` instead.
-    '''
-    return run_list(state.functions[0], head, req)
+    """
+    func = server.state['functions'][0]
+    return run_list(server, func, head, req)
 
-def ddoc_list(func, head, req):
-    '''Implementation of ddoc `lists` command.
+def ddoc_list(server, func, head, req):
+    """Implementation of ddoc `lists` command.
 
     :command: lists
 
@@ -197,15 +220,15 @@ def ddoc_list(func, head, req):
     :param head: View result information.
     :param req: Request info.
     :type func: function
-    :type doc: dict
+    :type head: dict
     :type req: dict
 
     .. versionadded:: 0.11.0
-    '''
-    return run_list(func, head, req)
+    """
+    return run_list(server, func, head, req)
 
-def show(func, doc, req):
-    '''Implementation of `show` command.
+def show(server, func, doc, req):
+    """Implementation of `show` command.
 
     :command: show
 
@@ -220,11 +243,11 @@ def show(func, doc, req):
     .. deprecated:: 0.11.0
         Now is a subcommand of :ref:`ddoc`.
         Use :func:`~couchdb.server.render.ddoc_show` instead.
-    '''
-    return run_show(compile_func(func), doc, req)
+    """
+    return run_show(server, server.compile(func), doc, req)
 
-def ddoc_show(func, doc, req):
-    '''Implementation of ddoc `shows` command.
+def ddoc_show(server, func, doc, req):
+    """Implementation of ddoc `shows` command.
 
     :command: shows
 
@@ -236,18 +259,18 @@ def ddoc_show(func, doc, req):
     :type req: dict
 
     .. versionadded:: 0.11.0
-    '''
-    return run_show(func, doc, req)
+    """
+    return run_show(server, func, doc, req)
 
-def update(func, doc, req):
-    '''Implementation of `update` command.
+def update(server, funsrc, doc, req):
+    """Implementation of `update` command.
 
     :command: update
 
-    :param func: Update function source.
+    :param funsrc: Update function source.
     :param doc: Document object.
     :param req: Request info.
-    :type func: unicode
+    :type funsrc: unicode
     :type doc: dict
     :type req: dict
 
@@ -263,11 +286,11 @@ def update(func, doc, req):
     .. deprecated:: 0.11.0
         Now is a subcommand of :ref:`ddoc`.
         Use :func:`~couchdb.server.render.ddoc_update` instead.
-    '''
-    return run_update(compile_func(func), doc, req)
+    """
+    return run_update(server, server.compile(funsrc), doc, req)
 
-def ddoc_update(func, doc, req):
-    '''Implementation of ddoc `updates` commands.
+def ddoc_update(server, func, doc, req):
+    """Implementation of ddoc `updates` commands.
 
     :command: updates
 
@@ -286,22 +309,9 @@ def ddoc_update(func, doc, req):
           If request method was GET.
           If response was not dict object or basestring.
 
-    .. versionadded:: 0.10.0
-    '''
-    return run_update(func, doc, req)
-
-def html_render_error(err, funstr):
-    '''obsolete'''
-    import cgi
-    return {
-        'body':''.join([
-        '<html><body><h1>Render Error</h1>',
-        str(err),
-        '</p><h2>Stacktrace:</h2><code><pre>',
-        cgi.escape(traceback.format_exc()),
-        '</pre></code><h2>Function source:</h2><code><pre>',
-        cgi.escape(funstr)])
-    }
+    .. versionadded:: 0.11.0
+    """
+    return run_update(server, func, doc, req)
 
 
 ################################################################################
