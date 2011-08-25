@@ -2,11 +2,13 @@
 #
 import logging
 import traceback
+from types import FunctionType
 from couchdb.server import mime
 from couchdb.server import state
 from couchdb.server import stream
 from couchdb.server.compiler import compile_func
 from couchdb.server.exceptions import Error, FatalError, ViewServerException
+from couchdb.server.helpers import partial
 
 __all__ = ['show', 'list', 'update',
            'show_doc', 'list_begin', 'list_row', 'list_tail',
@@ -18,6 +20,11 @@ chunks = []
 startresp = {}
 gotrow = False
 lastrow = False
+
+def apply_context(func, **context):
+    func.func_globals.update(context)
+    func = FunctionType(func.func_code, func.func_globals)
+    return func
 
 def reset_list():
     global gotrow, lastrow
@@ -301,9 +308,7 @@ def html_render_error(err, funstr):
 # Old render used only for 0.9.x
 #
 
-row_line = {}
-
-def render_function(func, args, funstr=None):
+def render_function(func, args):
     try:
         resp = func(*args)
         if resp:
@@ -315,11 +320,11 @@ def render_function(func, args, funstr=None):
     except ViewServerException:
         raise
     except Exception, err:
-        log.exception('Unexpected exception occured')
+        log.exception('Unexpected exception occurred')
         raise Error('render_error', str(err))
 
-def response_with(req, responders):
-    '''Context dispatcher method.
+def response_with(req, responders, mime_provider):
+    """Context dispatcher method.
 
     :param req: Request info.
     :param responders: Handlers mapping to mime format.
@@ -328,49 +333,49 @@ def response_with(req, responders):
 
     :return: Response object.
     :rtype: dict
-    '''
-    accept = None
-    best_key = None
-    if 'headers' in req:
-        accept = req['headers'].get('Accept')
-    query = req.get('query', {})
-    if accept is not None and 'format' not in query:
-        provides = [item for key in responders
-                         for item in mime.mimes_by_key.get(key, ())]
-        best_mime = mime.best_match(provides, accept)
-        best_key = mime.keys_by_mime.get(best_mime)
+    """
+    fallback = responders.pop('fallback', None)
+    for key, func in responders.items():
+        mime_provider.provides(key, func)
+    try:
+        resp = maybe_wrap_response(mime_provider.run_provides(req, fallback))
+    except Error, err:
+        mimetype = req.get('headers', {}).get('Accept')
+        mimetype = req.get('query', {}).get('format', mimetype)
+        return {'code': 406, 'body': 'Not Acceptable: %s' % mimetype}
     else:
-        best_key = query.get('format')
-    rfunc = responders.get(best_key or responders.get('fallback', 'html'))
-    if rfunc is not None:
-        resp = maybe_wrap_response(rfunc())
         if not 'headers' in resp:
             resp['headers'] = {}
-        resp['headers']['Content-Type'] = best_mime
+        resp['headers']['Content-Type'] = mime_provider.resp_content_type
         return resp
-    else:
-        return {'code': 406, 'body': 'Not Acceptable: %s' % accept}
 
-def show_doc(funstr, doc, req=None):
-    '''Implementation of `show_doc` command.
+def show_doc(server, funsrc, doc, req):
+    """Implementation of `show_doc` command.
 
     :command: show_doc
 
-    :param funstr: Python function source code.
+    :param funsrc: Python function source code.
+    :type funsrc: basestring
+
     :param doc: Document object.
-    :param req: Request info.
-    :type func: basestring
     :type doc: dict
+
+    :param req: Request info.
     :type req: dict
 
     .. versionadded:: 0.9.0
     .. deprecated:: 0.10.0 Use :func:`show` instead.
-    '''
-    func = compile_func(funstr)
+    """
+    mime_provider = mime.MimeProvider()
+    context = {
+        'response_with': partial(response_with, mime_provider=mime_provider),
+        'register_type': mime_provider.register_type
+    }
+    func = server.compile(funsrc, context=context)
     return render_function(func, [doc, req])
 
-def list_begin(head, req):
-    '''Initiates list rows generation.
+def list_begin(server, head, req):
+    """Initiates list rows generation.
 
     :command: list_begin
 
@@ -384,17 +389,18 @@ def list_begin(head, req):
 
     .. versionadded:: 0.9.0
     .. deprecated:: 0.10.0 Use :func:`list` instead.
-    '''
-    func = state.functions[0]
-    row_line[func] = {
+    """
+    func = server.state['functions'][0]
+    server.state['row_line'][func] = {
         'first_key': None,
         'row_number': 0,
         'prev_key': None
     }
+    func = apply_context(func, response_with=response_with)
     return render_function(func, [head, None, req, None])
 
-def list_row(row, req):
-    '''Generates single list row.
+def list_row(server, row, req):
+    """Generates single list row.
 
     :command: list_row
 
@@ -408,21 +414,21 @@ def list_row(row, req):
 
     .. versionadded:: 0.9.0
     .. deprecated:: 0.10.0 Use :func:`list` instead.
-    '''
-    func = state.functions[0]
-    funstr = state.functions_src[0]
-    row_info = row_line.get(func, None)
+    """
+    func = server.state['functions'][0]
+    row_info = server.state['row_line'].get(func, None)
+    func = apply_context(func, response_with=response_with)
     assert row_info is not None
-    resp = render_function(func, [None, row, req, row_info], funstr)
+    resp = render_function(func, [None, row, req, row_info])
     if row_info['first_key'] is None:
         row_info['first_key'] = row.get('key')
     row_info['prev_key'] = row.get('key')
     row_info['row_number'] += 1
-    row_line[func] = row_info
+    server.state['row_line'][func] = row_info
     return resp
 
-def list_tail(req):
-    '''Finishes list result output.
+def list_tail(server, req):
+    """Finishes list result output.
 
     :command: list_tail
 
@@ -434,7 +440,8 @@ def list_tail(req):
 
     .. versionadded:: 0.9.0
     .. deprecated:: 0.10.0 Use :func:`list` instead.
-    '''
-    func = state.functions[0]
-    row_info = row_line.pop(func, None)
+    """
+    func = server.state['functions'][0]
+    row_info = server.state['row_line'].pop(func, None)
+    func = apply_context(func, response_with=response_with)
     return render_function(func, [None, None, req, row_info])

@@ -48,6 +48,7 @@ class BaseQueryServer(object):
             'query_config': {},
             'functions': [],
             'functions_src': [],
+            'row_line': {}
         }
 
         for key, value in options.items():

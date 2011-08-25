@@ -148,7 +148,7 @@ class MimeProvider(object):
         """
         self.funcs_by_key[key] = func
 
-    def run_provides(self, req):
+    def run_provides(self, req, default=None):
         bestfun = None
         bestkey = None
         accept = None
@@ -170,6 +170,11 @@ class MimeProvider(object):
         if bestkey is not None:
             bestfun = self.funcs_by_key.get(bestkey)
         if bestfun is not None:
+            return bestfun()
+        if default is not None and default in self.funcs_by_key:
+            bestkey = default
+            bestfun = self.funcs_by_key[default]
+            self._resp_content_type = self.mimes_by_key[default][0]
             return bestfun()
         supported_types = ','.join(
             ', '.join(value) or key for key, value in self.mimes_by_key.items())
