@@ -40,6 +40,12 @@ class StreamTestCase(unittest.TestCase):
             self.assertTrue(isinstance(err, exceptions.FatalError))
             self.assertEqual(err.args[0], 'json_encode')
 
+    def test_respond_none(self):
+        """should not send any data if None passed"""
+        output = StringIO()
+        stream.respond(None, output)
+        self.assertEqual(output.getvalue(), '')
+
 
 def suite():
     suite = unittest.TestSuite()

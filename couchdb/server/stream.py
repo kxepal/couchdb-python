@@ -37,7 +37,9 @@ def respond(obj, output=sys.stdout):
 
     :param output: Output file-like object.
     """
-    log.debug('Data to respond:\n%s', obj)
+    if obj is None:
+        log.debug('Nothing to respond')
+        return
     try:
         obj = json.encode(obj)
     except Exception, err:
