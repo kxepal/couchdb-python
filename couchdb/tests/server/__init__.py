@@ -2,7 +2,7 @@
 #
 import unittest
 
-from couchdb.tests.server import compiler, ddoc, filters, mime, qs, \
+from couchdb.tests.server import compiler, ddoc, filters, mime, qs, render, \
                                  state, stream, validate, views
 
 
@@ -13,6 +13,7 @@ def suite():
     suite.addTest(filters.suite())
     suite.addTest(mime.suite())
     suite.addTest(qs.suite())
+    suite.addTest(render.suite())
     suite.addTest(state.suite())
     suite.addTest(stream.suite())
     suite.addTest(validate.suite())
