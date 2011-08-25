@@ -13,12 +13,15 @@ log = logging.getLogger(__name__)
 def receive(input=sys.stdin):
     """Yields json decoded line from input stream.
 
-    :param input: Iterable input stream of valid json encoded data.
+    :param input: Input stream with `.readline()` support.
 
     :yields: JSON decoded object.
     :rtype: list
     """
-    for line in input:
+    while True:
+        line = input.readline()
+        if not line:
+            break
         log.debug('Data received:\n%s', line)
         try:
             yield json.decode(line)
