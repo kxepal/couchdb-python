@@ -1,14 +1,12 @@
 # -*- coding: utf-8 -*-
 #
 import logging
+from pprint import pformat
 from couchdb.server.exceptions import Error
 
 log = logging.getLogger(__name__)
 
-__all__ = ['best_match',
-           'provides_used', 'reset_provides',
-           'register_type', 'provides', 'run_provides']
-
+__all__ = ['best_match', 'MimeProvider']
 
 def parse_mimetype(mimetype):
     parts = mimetype.split(';')
@@ -55,6 +53,7 @@ def best_match(supported, header):
     for i, item in enumerate(supported):
         weighted.append([fitness_and_quality(item, header), i, item])
     weighted.sort()
+    log.debug('Best match rating, last wins:\n%s', pformat(weighted))
     return weighted and weighted[-1][0][1] and weighted[-1][2] or ''
 
 
@@ -146,6 +145,7 @@ class MimeProvider(object):
         :param func: Function object or any callable.
         :type func: function or callable
         """
+        # TODO: https://issues.apache.org/jira/browse/COUCHDB-898
         self.funcs_by_key[key] = func
 
     def run_provides(self, req, default=None):
@@ -167,6 +167,8 @@ class MimeProvider(object):
             bestkey = self.keys_by_mime.get(self._resp_content_type)
         else:
             bestkey = self.funcs_by_key and self.funcs_by_key.keys()[0] or None
+        log.debug('Provides\nBest key: %s\nBest mime: %s\nRequest: %s',
+                  bestkey, self.resp_content_type, req)
         if bestkey is not None:
             bestfun = self.funcs_by_key.get(bestkey)
         if bestfun is not None:
@@ -175,9 +177,13 @@ class MimeProvider(object):
             bestkey = default
             bestfun = self.funcs_by_key[default]
             self._resp_content_type = self.mimes_by_key[default][0]
+            log.debug('Provides fallback\n'
+                      'Best key: %s\nBest mime: %s\nRequest: %s',
+                      bestkey, self.resp_content_type, req)
             return bestfun()
         supported_types = ','.join(
             ', '.join(value) or key for key, value in self.mimes_by_key.items())
-        raise Error('not_acceptable',
-                    'Content-Type %s not supported, try one of:\n'
-                    '%s' % (accept or bestkey, supported_types))
+        content_type = accept or self.resp_content_type or bestkey
+        msg = 'Content-Type %s not supported, try one of:\n %s'
+        log.error(msg, content_type, supported_types)
+        raise Error('not_acceptable', msg % (content_type, supported_types))
