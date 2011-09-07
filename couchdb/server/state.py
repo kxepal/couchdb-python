@@ -20,10 +20,12 @@ def reset(server, config=None):
     :return: True
     :rtype: bool
     """
+    log.debug('Reset server state')
     del server.state['functions'][:]
     del server.state['functions_src'][:]
     server.state['query_config'].clear()
     if config is not None:
+        log.debug('Set new query config:\n%s', config)
         server.state['query_config'].update(config)
     return True
 
@@ -41,6 +43,7 @@ def add_fun(server, funsrc):
     :return: True
     :rtype: bool
     """
+    log.debug('Add new function to server state:\n%s', funsrc)
     if server.version >= (1, 1, 0):
         ddoc = {'views': {'lib': server.state.get('view_lib', '')}}
     else:
@@ -66,5 +69,6 @@ def add_lib(server, lib):
 
     .. versionadded:: 1.1.0
     """
+    log.debug('Set view_lib:\n%s', lib)
     server.state['view_lib'] = lib
     return True
