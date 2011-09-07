@@ -22,11 +22,11 @@ def receive(input=sys.stdin):
         line = input.readline()
         if not line:
             break
-        log.debug('Data received:\n%s', line)
+        log.debug('Input:\n%s', line)
         try:
             yield json.decode(line)
         except Exception, err:
-            log.exception('Unable to decode json data: %s', line)
+            log.exception('Unable to decode json data:\n%s', line)
             raise FatalError('json_decode', str(err))
 
 def respond(obj, output=sys.stdout):
@@ -43,12 +43,12 @@ def respond(obj, output=sys.stdout):
     try:
         obj = json.encode(obj)
     except Exception, err:
-        log.exception('Error converting %r to json', obj)
+        log.exception('Unable to encode object to json:\n%r', obj)
         raise FatalError('json_encode', str(err))
     else:
         if isinstance(obj, unicode):
             obj = obj.encode('utf-8')
-        log.debug('Responding:\n%s', obj)
+        log.debug('Output:\n%s', obj)
         output.write(obj)
         output.write('\n')
         try:
