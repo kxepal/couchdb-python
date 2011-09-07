@@ -46,83 +46,136 @@ class EggExports(dict):
     """Sentinel for egg export statements."""
 
 
+def compile_to_bytecode(funsrc):
+    """Compiles function source string to bytecode"""
+    log.debug('Compile source code to function\n%s', funsrc)
+    assert isinstance(funsrc, basestring), 'Invalid source object %r' % funsrc
+
+    if isinstance(funsrc, unicode):
+        funsrc = funsrc.encode('utf-8')
+    if not funsrc.startswith(BOM_UTF8):
+        funsrc = BOM_UTF8 + funsrc
+
+    # compile + exec > exec
+    return compile(funsrc.replace('\r\n', '\n'), '<string>', 'exec')
+
+def maybe_b64egg(b64str):
+    """Checks if passed string probably is base64 encoded egg file"""
+    # Quick and dirty check for base64 encoded zipfile.
+    # Saves time and IO operations in most cases.
+    return b64str.startswith('UEsDBBQAAAAIA')
+
+def maybe_export_egg(source, allow_eggs=False, egg_cache=None):
+    """Tries to extract export statements from encoded egg"""
+    if allow_eggs and isinstance(source, basestring):
+        return import_b64egg(source, egg_cache)
+    return None
+
+def maybe_compile_function(source):
+    """Tries to compile Python source code to bytecode"""
+    if isinstance(source, basestring):
+        return compile_to_bytecode(source)
+    return None
+
+def maybe_export_bytecode(source, context, globals_):
+    """Tries to extract export statements from executed bytecode source"""
+    if isinstance(source, CodeType):
+        exec source in context, globals_
+        return globals_.get('exports', {})
+    return None
+
+def maybe_export_cached_egg(source):
+    """Tries to extract export statements from cached egg namespace"""
+    if isinstance(source, EggExports):
+        return source
+    return None
+
+def cache_to_ddoc(ddoc, path, obj):
+    """Cache object to ddoc by specified path"""
+    assert path, 'Path should not be empty'
+    point = ddoc
+    for item in path:
+        prev, point = point, point.get(item)
+    prev[item] = obj
+
 def resolve_module(names, mod, root=None):
     def helper():
         return ('\n    id: %r'
                 '\n    names: %r'
                 '\n    parent: %r'
                 '\n    current: %r'
-                '\n    root: %r') % (id, names, parent, current, root)
+                '\n    root: %r') % (idx, names, parent, current, root)
     log.debug('Resolve module at %s. Current frame: %s', names, mod)
-    id = mod.get('id')
+    idx = mod.get('id')
     parent = mod.get('parent')
     current = mod.get('current')
     if not names:
         if not isinstance(current, (basestring, CodeType, EggExports)):
             raise Error('invalid_require_path',
-                        'Must require Python string or code object,'
+                        'Must require Python string, code object or egg cache,'
                         ' not %r' % current)
+        log.debug('Found object by id %s:\n%s', id, current)
         return {
             'current': current,
             'parent': parent,
-            'id': id,
+            'id': idx,
             'exports': {}
         }
-    n = names.pop(0)
-    if not n:
+    name = names.pop(0)
+    if not name:
         raise Error('invalid_require_path',
                     'Required path shouldn\'t starts with slash character'
                     ' or contains sequence of slashes.' + helper())
-    if n == '..':
+    if name == '..':
         if parent is None or parent.get('parent') is None:
             raise Error('invalid_require_path',
-                        'Object %r has no parent.' % id + helper())
+                        'Object %r has no parent.' % idx + helper())
         return resolve_module(names, {
-            'id': id[:id.rfind('/')],
+            'id': idx[:idx.rfind('/')],
             'parent': parent.get('parent'),
             'current': parent.get('current'),
         })
-    elif n == '.':
+    elif name == '.':
         if parent is None:
             raise Error('invalid_require_path',
-                        'Object %r has no parent.' % id + helper())
+                        'Object %r has no parent.' % idx + helper())
         return resolve_module(names, {
-            'id': id,
+            'id': idx,
             'parent': parent,
             'current': current,
         })
     elif root:
-        id = None
+        idx = None
         mod = {'current': root}
         current = root
     if current is None:
         raise Error('invalid_require_path',
                     'Required module missing.' + helper())
-    if not n in current:
+    if not name in current:
         raise Error('invalid_require_path',
-                    'Object %r has no property %r' % (id, n) + helper())
+                    'Object %r has no property %r' % (idx, name) + helper())
     return resolve_module(names, {
-        'current': current[n],
+        'current': current[name],
         'parent': mod,
-        'id': (id is not None) and (id + '/' + n) or n
+        'id': (idx is not None) and (idx + '/' + name) or name
     })
 
-def import_b64egg(b64egg, egg_cache=None):
+def import_b64egg(b64str, egg_cache=None):
     """Imports top level namespace from base64 encoded egg file.
 
     For Python 2.4 `setuptools <http://pypi.python.org/pypi/setuptools>`_
     package required.
 
-    :param b64egg: Base64 encoded egg file.
-    :type b64egg: str
+    :param b64str: Base64 encoded egg file.
+    :type b64str: str
 
     :return: Egg top level namespace or None if egg import disabled.
     :rtype: dict
     """
-    # Quick and dirty check for base64 encoded zipfile.
-    # Saves time and IO operations in most cases.
-    if not b64egg.startswith('UEsDBBQAAAAIA'):
-        return None
+    if iter_modules is None:
+        raise ImportError('No tools available to work with eggs.'
+                          ' Probably, setuptools package could solve'
+                          ' this problem.')
     egg = None
     egg_path = None
     egg_cache = (egg_cache
@@ -130,15 +183,11 @@ def import_b64egg(b64egg, egg_cache=None):
                  or os.path.join(tempfile.gettempdir(), '.python-eggs'))
     try:
         try:
-            if iter_modules is None:
-                raise ImportError('No tools available to work with eggs.'
-                                  ' Probably, setuptools package could solve'
-                                  ' this problem.')
             if not os.path.exists(egg_cache):
                 os.mkdir(egg_cache)
             hegg, egg_path = tempfile.mkstemp(dir=egg_cache)
             egg = os.fdopen(hegg, 'wb')
-            egg.write(base64.b64decode(b64egg))
+            egg.write(base64.b64decode(b64str))
             egg.close()
             exports = EggExports(
                 [(name, loader.load_module(name))
@@ -149,10 +198,10 @@ def import_b64egg(b64egg, egg_cache=None):
             raise
         else:
             if not exports:
-                raise ImportError('Nothing to export.')
+                raise Error('egg_error', 'Nothing to export')
             return exports
     finally:
-        if egg is not None and os.path.exists(egg_path):
+        if egg_path is not None and os.path.exists(egg_path):
             os.unlink(egg_path)
 
 def require(ddoc, context=None, **options):
@@ -171,9 +220,10 @@ def require(ddoc, context=None, **options):
     `specification <http://wiki.commonjs.org/wiki/Modules/1.1.1>`_.
 
     :param path: Path to stored module through document structure fields.
+    :type path: basestring
+
     :param module: Current execution context. Normally, you wouldn't used this
         argument.
-    :type path: basestring
     :type module: dict
 
     :return: Exported statements.
@@ -211,78 +261,75 @@ def require(ddoc, context=None, **options):
         >>>     return True
 
     .. versionadded:: 0.11.0
-    .. versionchanged:: 1.1.0 Available for map functions if add_lib
-        command proceeded.
+    .. versionchanged:: 1.1.0 Available for map functions.
     """
     context = context or DEFAULT_CONTEXT.copy()
     _visited_ids = []
     def require(path, module=None):
-        log.debug('Importing objects from %s', path)
+        log.debug('Looking for export objects at %s', path)
         module = module and module.get('parent') or {}
         new_module = resolve_module(path.split('/'), module, ddoc)
+
         if new_module['id'] in _visited_ids:
             log.error('Circular require calls have created deadlock!'
                       ' DDoc id `%s` ; call stack: %r',
                       ddoc.get('_id'), _visited_ids)
             del _visited_ids[:]
-            raise RuntimeError('Circular require calls deadlock occurred')
+            raise RuntimeError('Require function calls have created deadlock')
         _visited_ids.append(new_module['id'])
         source = new_module['current']
+        log.debug('Found object:\n%r', source)
+
         globals_ = {
             'module': new_module,
             'exports': new_module['exports'],
         }
         module_context = context.copy()
         module_context['require'] = lambda path: require(path, new_module)
+        enable_eggs = options.get('enable_eggs', False)
+        egg_cache = options.get('egg_cache', None)
+
         try:
-            try:
-                bytecode = None
-                if isinstance(source, basestring):
-                    egg = None
-                    if options.get('enable_eggs', False):
-                        egg_cache = options.get('egg_cache', None)
-                        egg = import_b64egg(source, egg_cache)
-                    if egg is None:
-                        bytecode = compile(source.replace('\r\n', '\n'),
-                                           '<string>', 'exec')
-                    else:
-                        exports = egg
-                    point = ddoc
-                    for item in new_module['id'].split('/'):
-                        prev, point = point, point.get(item)
-                    prev[item] = bytecode or egg
-                elif isinstance(source, CodeType):
-                    bytecode = source
-                else:
-                    assert isinstance(source, EggExports), repr(new_module)
-                    exports = source
-                if bytecode is not None:
-                    exec bytecode in module_context, globals_
-                    exports = globals_.get('exports', {})
-            except Error, err:
-                raise
-            except Exception, err:
-                log.exception('Compilation error')
-                raise Error('compilation_error', '%s:\n%s' % (err, source))
-            else:
+            exports = maybe_export_egg(source, enable_eggs, egg_cache)
+            if exports is not None:
+                cache_to_ddoc(ddoc, new_module['id'].split('/'), exports)
                 return exports
+
+            exports = maybe_export_cached_egg(source)
+            if exports is not None:
+                return exports
+
+            bytecode = maybe_compile_function(source)
+            if bytecode is not None:
+                cache_to_ddoc(ddoc, new_module['id'].split('/'), bytecode)
+                source = bytecode
+            try:
+                exports = maybe_export_bytecode(source, module_context, globals_)
+                if exports is not None:
+                    return exports
+            except Exception, err:
+                log.exception('Failed to compile source code:\n%s',
+                              new_module['current'])
+                raise Error('compilation_error', str(err))
+            
+            raise Error('invalid_required_object', repr(new_module['current']))
         finally:
             if _visited_ids:
                 _visited_ids.pop()
     return require
 
-def compile_func(funstr, ddoc=None, context=None, **options):
+def compile_func(funsrc, ddoc=None, context=None, **options):
     """Compile source code and extract function object from it.
 
-    :param funstr: Python source code.
-    :type funstr: unicode
+    :param funsrc: Python source code.
+    :type funsrc: unicode
 
     :param ddoc: Optional argument which must represent design document.
     :type ddoc: dict
 
     :param context: Custom context objects which function could operate with.
     :type context: dict
-    
+
     :param options: Compiler config options.
 
     :return: Function object.
@@ -293,29 +340,27 @@ def compile_func(funstr, ddoc=None, context=None, **options):
           definition.
 
     .. note::
-        ``funstr`` should contains only one function definition and import
-         statements (optional) or :exc:`~couchdb.server.exceptions.Error`
-         will be raised.
+        ``funsrc`` should contains only one function definition and import
+        statements (optional) or :exc:`~couchdb.server.exceptions.Error`
+        will be raised.
+
     """
     if not context:
         context = DEFAULT_CONTEXT.copy()
     else:
         context, _ = DEFAULT_CONTEXT.copy(), context
         context.update(_)
-    log.debug('Compiling code to function:\n%s', funstr)
-    funstr = BOM_UTF8 + funstr.encode('utf-8')
-    globals_ = {}
     if ddoc is not None:
         context['require'] = require(ddoc, context, **options)
-    elif 'require' in context:
-        context.pop('require')
+
+    globals_ = {}
     try:
-        # compile + exec > exec
-        bytecode = compile(funstr.replace('\r\n', '\n'), '<string>', 'exec')
+        bytecode = compile_to_bytecode(funsrc)
         exec bytecode in context, globals_
     except Exception, err:
-        log.exception('Failed to compile function\n%s', funstr)
+        log.exception('Failed to compile source code:\n%s', funsrc)
         raise Error('compilation_error', str(err))
+
     msg = None
     func = None
     for item in globals_.values():
@@ -331,6 +376,6 @@ def compile_func(funstr, ddoc=None, context=None, **options):
     if msg is None and not isinstance(func, FunctionType):
         msg = 'Expression does not eval to a function'
     if msg is not None:
-        log.error('%s\n%s', msg, funstr)
+        log.error('%s\n%s', msg, funsrc)
         raise Error('compilation_error', msg)
     return func

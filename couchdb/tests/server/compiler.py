@@ -179,16 +179,11 @@ class EggModulesTestCase(unittest.TestCase):
 
     def test_fail_for_invalid_egg(self):
         egg = 'UEsDBBQAAAAIAKx1qD6TBtcyAwAAAAEAAAAdAAAARUdHLUlORk8vZGVwZW5kZW=='
-        self.assertRaises(ImportError, compiler.import_b64egg, egg)
+        self.assertRaises(exceptions.Error, compiler.import_b64egg, egg)
 
     def test_fail_for_invalid_b64egg_string(self):
         egg = 'UEsDBBQAAAAIAKx1qD6TBtcyAwAAAAEAAAAdAAAARUdHLUlORk8vZGVwZW5kZW'
         self.assertRaises(TypeError, compiler.import_b64egg, egg)
-
-    def test_pattern_mismatch_returns_nothing(self):
-        egg = 'foo'
-        exports = compiler.import_b64egg(egg)
-        self.assertEqual(exports, None)
 
     def test_fail_for_no_setuptools_or_pkgutils(self):
         egg = 'UEsDBBQAAAAIAKx1qD6TBtcyAwAAAAEAAAAdAAAARUdHLUlORk8vZGVwZW5kZW=='
@@ -240,13 +235,21 @@ class CompilerTestCase(unittest.TestCase):
         func = compiler.compile_func(funsrc)
         self.assertRaises(NameError, func)
 
-    def test_function_source_should_be_ascii_or_unicode_string(self):
+    def test_ascii_function_source_string(self):
         funsrc = 'def test(): return 42'
         compiler.compile_func(funsrc)
+
+    def test_unicode_function_source_string(self):
         funsrc = u'def test(): return "тест пройден"'
         compiler.compile_func(funsrc)
+
+    def test_utf8_function_source_string(self):
         funsrc = 'def test(): return "тест пройден"'
-        self.assertRaises(UnicodeDecodeError, compiler.compile_func, funsrc)
+        compiler.compile_func(funsrc)
+
+    def test_encoded_function_source_string(self):
+        funsrc = u'def test(): return "тест пройден"'.encode('cp1251')
+        compiler.compile_func(funsrc)
 
     def test_fail_for_multiple_functions_definition(self):
         funsrc = (
