@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 #
+import copy
 import logging
 from couchdb import json
 from couchdb.server.exceptions import ViewServerException, Error
@@ -26,28 +27,29 @@ def map_doc(server, doc):
           If any Python exception occurs due mapping.
     """
     docid = doc.get('_id')
-    log.debug('Running map functions for doc._id `%s`', docid)
+    log.debug('Apply map functions to document `%s`:\n%s', docid, doc)
+    orig_doc = copy.deepcopy(doc)
     map_results = []
-    orig_doc = doc.copy()
+    _append = map_results.append
     try:
         for idx, func in enumerate(server.state['functions']):
-            result = [[key, value] for key, value in func(doc) or []]
-            map_results.append(result)
-            # quick and dirty trick to prevent document from changing
-            # within map functions.
+            # TODO: https://issues.apache.org/jira/browse/COUCHDB-729
+            # Apply copy.deepcopy for `key` and `value` to fix this issue
+            _append([[key, value] for key, value in func(doc) or []])
             if doc != orig_doc:
-                log.warning("Document `%s` had been changed by map function "
-                            "'%s', but was restored to original state",
-                            doc.get('_id'), func.__name__)
-                doc = orig_doc.copy()
-    except ViewServerException:
-        log.exception('Query server exception occurred, aborting operation')
-        raise
+                log.warning('Document `%s` had been changed by map function'
+                            ' `%s`, but was restored to original state',
+                            docid, func.__name__)
+                doc = copy.deepcopy(orig_doc)
     except Exception, err:
-        msg = 'Map function raised error for doc._id `%s`\n%s\n'
+        msg = 'Exception raised for document `%s`:\n%s\n\n%s\n\n'
         funsrc = server.state['functions_src'][idx]
-        log.exception(msg, docid, funsrc)
-        raise Error(err.__class__.__name__, msg % (docid, err))
+        log.exception(msg, docid, doc, funsrc)
+        if isinstance(err, ViewServerException):
+            raise
+        # TODO: https://issues.apache.org/jira/browse/COUCHDB-282
+        # Raise FatalError to fix this issue
+        raise Error(err.__class__.__name__, str(err))
     else:
         return map_results
 
@@ -77,25 +79,20 @@ def reduce(server, reduce_funs, kvs, rereduce=False):
           as state.line_length and reduce_limit is enabled in state.query_config
     """
     reductions = []
-    # If rereduce processed kvs variable contains only list of values, so we
-    # have set keys to None. Otherwise kvs should be splitted to keys and values
-    # lists by zip function, but it could return empty list if no documents was
-    # emitted by map function. To prevent exception, empty lists should be
-    # assigned explicitly to keys and values variables.
-    keys, values = rereduce and (None, kvs) or zip(*kvs) or ([],[])
+    _append = reductions.append
+    keys, values = rereduce and (None, kvs) or zip(*kvs) or ([], [])
+    log.debug('Reducing\nkeys: %s\nvalues: %s', keys, values)
     args = (keys, values, rereduce)
     try:
         for funsrc in reduce_funs:
             function = server.compile(funsrc)
-            result = function(*args[:function.func_code.co_argcount])
-            reductions.append(result)
-    except ViewServerException:
-        log.exception('Query server exception occurred, aborting operation')
-        raise
+            _append(function(*args[:function.func_code.co_argcount]))
     except Exception, err:
-        msg = 'Reduce function raised an error: %s\n' % funsrc
-        log.exception(msg)
-        raise Error(err.__class__.__name__, '%s:\n%s' % (msg, err))
+        msg = 'Exception raised on reduction:\nkeys: %s\nvalues: %s\n\n%s\n\n'
+        log.exception(msg, keys, values, funsrc)
+        if isinstance(err, ViewServerException):
+            raise
+        raise Error(err.__class__.__name__, str(err))
 
     # if-based pyramid was made by optimization reasons
     if server.is_reduce_limited():
@@ -104,9 +101,9 @@ def reduce(server, reduce_funs, kvs, rereduce=False):
         if reduce_len > 200:
             size_overflowed = (reduce_len * 2) > len(json.encode(kvs))
             if size_overflowed:
-                msg = ("Reduce output must shrink more rapidly:\n"
-                      "Current output: '%s'... (first 100 of %d bytes)"
-                      "") % (reduce_line[:100], reduce_len)
+                msg = ('Reduce output must shrink more rapidly:\n'
+                       'Current output: `%s`... (first 100 of %d bytes)'
+                       '') % (reduce_line[:100], reduce_len)
                 log.error(msg)
                 raise Error('reduce_overflow_error', msg)
     return [True, reductions]
@@ -133,4 +130,5 @@ def rereduce(server, reduce_funs, values):
           If any Python exception occurs or reduce output is twice longer
           as state.line_length and reduce_limit is enabled in state.query_config
     """
+    log.debug('Rereducing values:\n%s', values)
     return reduce(server, reduce_funs, values, rereduce=True)

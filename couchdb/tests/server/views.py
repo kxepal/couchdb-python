@@ -88,6 +88,33 @@ class MapTestCase(unittest.TestCase):
         doc = {'_id': 'foo'}
         views.map_doc(self.server, doc)
 
+    def test_prevent_changes_of_nested_mutable_values(self):
+        state.add_fun(
+            self.server,
+            'def mapfun(doc):\n'
+            '  assert not doc["bar"]["baz"]\n'
+            '  doc["bar"]["baz"].append(42)\n'
+            '  yield doc["bar"], 1'
+        )
+        state.add_fun(
+            self.server,
+            'def mapfun(doc):\n'
+            '  assert not doc["bar"]["baz"]\n'
+            '  yield doc["_id"], 0'
+        )
+        doc = {'_id': 'foo', 'bar': {'baz': []}}
+        views.map_doc(self.server, doc)
+
+    def test_return_nothing(self):
+        """shouldn't crush if map function returns nothing"""
+        state.add_fun(
+            self.server,
+            'def mapfun(doc):\n'
+            '  pass'
+        )
+        doc = {'_id': 'foo'}
+        views.map_doc(self.server, doc)
+
 
 class ReduceTestCase(unittest.TestCase):
 
