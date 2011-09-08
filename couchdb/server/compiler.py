@@ -63,11 +63,11 @@ def maybe_b64egg(b64str):
     """Checks if passed string probably is base64 encoded egg file"""
     # Quick and dirty check for base64 encoded zipfile.
     # Saves time and IO operations in most cases.
-    return b64str.startswith('UEsDBBQAAAAIA')
+    return isinstance(b64str, basestring) and b64str.startswith('UEsDBBQAAAAIA')
 
 def maybe_export_egg(source, allow_eggs=False, egg_cache=None):
     """Tries to extract export statements from encoded egg"""
-    if allow_eggs and isinstance(source, basestring):
+    if allow_eggs and maybe_b64egg(source):
         return import_b64egg(source, egg_cache)
     return None
 
@@ -114,7 +114,7 @@ def resolve_module(names, mod, root=None):
             raise Error('invalid_require_path',
                         'Must require Python string, code object or egg cache,'
                         ' not %r' % current)
-        log.debug('Found object by id %s:\n%s', id, current)
+        log.debug('Found object by id %s:\n%s', idx, current)
         return {
             'current': current,
             'parent': parent,
@@ -278,7 +278,6 @@ def require(ddoc, context=None, **options):
             raise RuntimeError('Require function calls have created deadlock')
         _visited_ids.append(new_module['id'])
         source = new_module['current']
-        log.debug('Found object:\n%r', source)
 
         globals_ = {
             'module': new_module,

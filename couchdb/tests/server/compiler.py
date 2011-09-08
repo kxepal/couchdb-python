@@ -95,6 +95,22 @@ class DDocModulesTestCase(unittest.TestCase):
         exports = require('lib/universe')
         self.assertEqual(exports['universe'].question.get_answer(), 42)
 
+    def test_reqire_egg_from_module(self):
+        ddoc = {
+            '_id': 'foo',
+            'lib': {
+                'egg': DUMMY_EGG,
+                'utils.py': (
+                    "universe = require('lib/egg')['universe'] \n"
+                    "exports['title'] = 'The Answer' \n"
+                    "exports['body'] = str(universe.question.get_answer())")
+            }
+        }
+        require = compiler.require(ddoc, enable_eggs=True)
+        exports = require('lib/utils.py')
+        result = ' - '.join([exports['title'], exports['body']])
+        self.assertEqual(result, 'The Answer - 42')
+
     def test_fail_on_resolving_deadlock(self):
         ddoc = {
             'lib': {
