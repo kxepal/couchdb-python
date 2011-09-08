@@ -128,8 +128,10 @@ def run_show(server, func, doc, req):
             resp['body'] = ''.join(responder.chunks) + resp.get('body', '')
             responder.reset()
         if mime_provider.is_provides_used():
-            resp = mime_provider.run_provides(req)
-            resp = maybe_wrap_response(resp)
+            provided_resp = mime_provider.run_provides(req) or {}
+            provided_resp = maybe_wrap_response(provided_resp)
+            resp['body'] = resp.get('body', '') + ''.join(responder.chunks)
+            resp['body'] += provided_resp.get('body', '')
             resp = apply_content_type(resp, mime_provider.resp_content_type)
     except ViewServerException:
         raise

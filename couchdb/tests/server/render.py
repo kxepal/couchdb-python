@@ -186,6 +186,22 @@ class ShowTestCase(unittest.TestCase):
         self.assertEqual(resp['headers']['X-Couchdb-Python'], 'Relax!')
         self.assertEqual(resp['body'], 'foo, bar, baz')
 
+    def test_show_list_api_and_provides(self):
+        # https://issues.apache.org/jira/browse/COUCHDB-1272
+        def func(doc, req):
+            def text():
+                send('4, ')
+                send('5, ')
+                send('6, ')
+                return '7!'
+            provides('text', text)
+            send('1, ')
+            send('2, ')
+            return '3, '
+        token, resp = render.run_show(self.server, func, self.doc, {})
+        self.assertEqual(token, 'resp')
+        self.assertEqual(resp['body'], '1, 2, 3, 4, 5, 6, 7!')
+
     def test_show_invalid_start_func_headers(self):
         def func(doc, req):
             start({
