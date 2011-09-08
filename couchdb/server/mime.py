@@ -181,9 +181,9 @@ class MimeProvider(object):
                       'Best key: %s\nBest mime: %s\nRequest: %s',
                       bestkey, self.resp_content_type, req)
             return bestfun()
-        supported_types = ','.join(
+        supported_types = ', '.join(
             ', '.join(value) or key for key, value in self.mimes_by_key.items())
         content_type = accept or self.resp_content_type or bestkey
-        msg = 'Content-Type %s not supported, try one of:\n %s'
+        msg = 'Content-Type %s not supported, try one of:\n%s'
         log.error(msg, content_type, supported_types)
         raise Error('not_acceptable', msg % (content_type, supported_types))
