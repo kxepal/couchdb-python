@@ -62,7 +62,7 @@ class ChunkedReponder(object):
         self.chunks = []
 
     def send_start(self, resp_content_type):
-        log.debug('Starting respond')
+        log.debug('Start response with %s content type', resp_content_type)
         resp = apply_content_type(self.startresp or {}, resp_content_type)
         self.write(['start', self.chunks, resp])
         self.chunks = []
@@ -71,13 +71,14 @@ class ChunkedReponder(object):
     def send(self, chunk):
         """Sends an HTTP chunk to the client.
 
-        :param chunk: Response chunk object. Would be converted to unicode string.
+        :param chunk: Response chunk object.
+                      Would be converted to unicode string.
         :type chunk: unicode or utf-8 encoded string preferred.
         """
         self.chunks.append(unicode(chunk))
 
     def blow_chunks(self, label='chunks'):
-        log.debug('Sending chunks')
+        log.debug('Send chunks')
         self.write([label, self.chunks])
         self.chunks = []
 
@@ -103,26 +104,26 @@ def is_doc_request_path(info):
     return len(info['path']) > 5
 
 def run_show(server, func, doc, req):
+    log.debug('Run show %s\ndoc: %s\nreq: %s', func, doc, req)
+    mime_provider = mime.MimeProvider()
+    responder = ChunkedReponder(server.receive, server.respond, mime_provider)
+    func = apply_context(
+        func,
+        register_type = mime_provider.register_type,
+        provides = mime_provider.provides,
+        start = responder.start,
+        send = responder.send,
+        get_row = responder.get_row
+    )
     try:
-        mime_provider = mime.MimeProvider()
-        responder = ChunkedReponder(
-            server.receive, server.respond, mime_provider)
-        func = apply_context(
-            func,
-            register_type = mime_provider.register_type,
-            provides = mime_provider.provides,
-            start = responder.start,
-            send = responder.send,
-            get_row = responder.get_row
-        )
         resp = func(doc, req) or {}
         if responder.chunks:
             resp = maybe_wrap_response(resp)
             if not 'headers' in resp:
                 resp['headers'] = {}
             for key, value in responder.startresp.items():
-                assert isinstance(key, basestring), 'invalid header name'
-                assert isinstance(value, basestring), 'invalid header value'
+                assert isinstance(key, str), 'invalid header key %r' % key
+                assert isinstance(value, str), 'invalid header value %r' % value
                 resp['headers'][key] = value
             resp['body'] = ''.join(responder.chunks) + resp.get('body', '')
             responder.reset()
@@ -130,52 +131,61 @@ def run_show(server, func, doc, req):
             resp = mime_provider.run_provides(req)
             resp = maybe_wrap_response(resp)
             resp = apply_content_type(resp, mime_provider.resp_content_type)
+    except ViewServerException:
+        raise
+    except Exception, err:
+        log.exception('Show %s raised an error:\n'
+                      'doc: %s\nreq: %s\n', func, doc, req)
+        if doc is None and is_doc_request_path(req):
+            raise Error('not_found', 'document not found')
+        raise Error('render_error', str(err))
+    else:
+        resp = maybe_wrap_response(resp)
+        log.debug('Show %s response\n%s', func, resp)
         if not isinstance(resp, (dict, basestring)):
             msg = 'Invalid response object %r ; type: %r' % (resp, type(resp))
             log.error(msg)
             raise Error('render_error', msg)
-        return ['resp', maybe_wrap_response(resp)]
+        return ['resp', resp]
+
+def run_update(server, func, doc, req):
+    log.debug('Run update %s\ndoc: %s\nreq: %s', func, doc, req)
+    method = req.get('method', None)
+    if not server.config.get('allow_get_update', False) and method == 'GET':
+        msg = 'Method `GET` is not allowed for update functions'
+        log.error(msg + '.\nRequest: %s', req)
+        raise Error('method_not_allowed', msg)
+    try:
+        doc, resp = func(doc, req)
     except ViewServerException:
         raise
     except Exception, err:
-        log.exception('Unexpected exception occurred')
-        if doc is None and is_doc_request_path(req):
-            raise Error('not_found', 'document not found')
+        log.exception('Update %s raised an error:\n'
+                      'doc: %s\nreq: %s\n', func, doc, req)
         raise Error('render_error', str(err))
-
-def run_update(server, func, doc, req):
-    try:
-        method = req.get('method', None)
-        if not server.config.get('allow_get_update', False) and method == 'GET':
-            msg = 'Method `GET` is not allowed for update functions'
-            log.error(msg)
-            raise Error('method_not_allowed', msg)
-        doc, resp = func(doc, req)
+    else:
+        resp = maybe_wrap_response(resp)
+        log.debug('Update %s response\n%s', func, resp)
         if isinstance(resp, (dict, basestring)):
-            return ['up', doc, maybe_wrap_response(resp)]
+            return ['up', doc, resp]
         else:
             msg = 'Invalid response object %r ; type: %r' % (resp, type(resp))
             log.error(msg)
             raise Error('render_error', msg)
-    except ViewServerException:
-        raise
-    except Exception, err:
-        log.exception('Unexpected exception occurred')
-        raise Error('render_error', str(err))
 
 def run_list(server, func, head, req):
+    log.debug('Run list %s\nhead: %s\nreq: %s', func, head, req)
+    mime_provider = mime.MimeProvider()
+    responder = ChunkedReponder(server.receive, server.respond, mime_provider)
+    func = apply_context(
+        func,
+        register_type = mime_provider.register_type,
+        provides = mime_provider.provides,
+        start = responder.start,
+        send = responder.send,
+        get_row = responder.get_row
+    )
     try:
-        mime_provider = mime.MimeProvider()
-        responder = ChunkedReponder(
-            server.receive, server.respond, mime_provider)
-        func = apply_context(
-            func,
-            register_type = mime_provider.register_type,
-            provides = mime_provider.provides,
-            start = responder.start,
-            send = responder.send,
-            get_row = responder.get_row
-        )
         tail = func(head, req)
         if mime_provider.is_provides_used():
             tail = mime_provider.run_provides(req)
@@ -188,7 +198,8 @@ def run_list(server, func, head, req):
     except ViewServerException:
         raise
     except Exception, err:
-        log.exception('Unexpected exception occurred')
+        log.exception('List %s raised an error:\n'
+                      'head: %s\nreq: %s\n', func, head, req)
         raise Error('render_error', str(err))
 
 def list(server, head, req):
@@ -197,9 +208,13 @@ def list(server, head, req):
 
     :command: list
 
+    :param server: Query server instance.
+    :type server: :class:`~couchdb.server.BaseQueryServer`
+
     :param head: View result information.
-    :param req: Request info.
     :type head: dict
+
+    :param req: Request info.
     :type req: dict
 
     .. versionadded:: 0.10.0
@@ -215,11 +230,16 @@ def ddoc_list(server, func, head, req):
 
     :command: lists
 
+    :param server: Query server instance.
+    :type server: :class:`~couchdb.server.BaseQueryServer`
+
     :param func: List function object.
-    :param head: View result information.
-    :param req: Request info.
     :type func: function
+
+    :param head: View result information.
     :type head: dict
+
+    :param req: Request info.
     :type req: dict
 
     .. versionadded:: 0.11.0
@@ -231,11 +251,16 @@ def show(server, func, doc, req):
 
     :command: show
 
+    :param server: Query server instance.
+    :type server: :class:`~couchdb.server.BaseQueryServer`
+
     :param func: Show function source.
-    :param doc: Document object.
-    :param req: Request info.
     :type func: unicode
+
+    :param doc: Document object.
     :type doc: dict
+
+    :param req: Request info.
     :type req: dict
 
     .. versionadded:: 0.10.0
@@ -250,11 +275,16 @@ def ddoc_show(server, func, doc, req):
 
     :command: shows
 
+    :param server: Query server instance.
+    :type server: :class:`~couchdb.server.BaseQueryServer`
+
     :param func: Show function object.
-    :param doc: Document object.
-    :param req: Request info.
     :type func: function
+
+    :param doc: Document object.
     :type doc: dict
+
+    :param req: Request info.
     :type req: dict
 
     .. versionadded:: 0.11.0
@@ -266,11 +296,16 @@ def update(server, funsrc, doc, req):
 
     :command: update
 
+    :param server: Query server instance.
+    :type server: :class:`~couchdb.server.BaseQueryServer`
+
     :param funsrc: Update function source.
-    :param doc: Document object.
-    :param req: Request info.
     :type funsrc: unicode
+
+    :param doc: Document object.
     :type doc: dict
+
+    :param req: Request info.
     :type req: dict
 
     :return: Three element list: ["up", doc, response]
@@ -293,11 +328,16 @@ def ddoc_update(server, func, doc, req):
 
     :command: updates
 
+    :param server: Query server instance.
+    :type server: :class:`~couchdb.server.BaseQueryServer`
+
     :param func: Update function object.
-    :param doc: Document object.
-    :param req: Request info.
     :type func: function
+
+    :param doc: Document object.
     :type doc: dict
+
+    :param req: Request info.
     :type req: dict
 
     :return: Three element list: ["up", doc, response]
@@ -319,26 +359,30 @@ def ddoc_update(server, func, doc, req):
 
 def render_function(func, args):
     try:
-        resp = func(*args)
-        if resp:
-            return maybe_wrap_response(resp)
+        resp = maybe_wrap_response(func(*args))
+        if isinstance(resp, (dict, basestring)):
+            return resp
         else:
-            log.error('undefined response from render')
-            raise Error('render_error', 'undefined response from render'
-                                        ' function: %s' % resp)
+            msg = 'Invalid response object %r ; type: %r' % (resp, type(resp))
+            log.error(msg)
+            raise Error('render_error', msg)
     except ViewServerException:
         raise
     except Exception, err:
-        log.exception('Unexpected exception occurred')
+        log.exception('Unexpected exception occurred in %s', func)
         raise Error('render_error', str(err))
 
 def response_with(req, responders, mime_provider):
     """Context dispatcher method.
 
     :param req: Request info.
-    :param responders: Handlers mapping to mime format.
     :type req: dict
+
+    :param responders: Handlers mapping to mime format.
     :type responders: dict
+
+    :param mime_provider: Mime provider instance.
+    :type mime_provider: :class:`~couchdb.server.mime.MimeProvider`
 
     :return: Response object.
     :rtype: dict
@@ -349,9 +393,14 @@ def response_with(req, responders, mime_provider):
     try:
         resp = maybe_wrap_response(mime_provider.run_provides(req, fallback))
     except Error, err:
+        if err.args[0] != 'not_acceptable':
+            log.exception('Unexpected error raised:\n'
+                          'req: %s\nresponders: %s', req, responders)
+            raise
         mimetype = req.get('headers', {}).get('Accept')
         mimetype = req.get('query', {}).get('format', mimetype)
-        return {'code': 406, 'body': 'Not Acceptable: %s' % mimetype}
+        log.warn('Not acceptable content-type: %s', mimetype)
+        return {'code': 406, 'body': 'Not acceptable: %s' % mimetype}
     else:
         if not 'headers' in resp:
             resp['headers'] = {}
@@ -362,6 +411,9 @@ def show_doc(server, funsrc, doc, req):
     """Implementation of `show_doc` command.
 
     :command: show_doc
+
+    :param server: Query server instance.
+    :type server: :class:`~couchdb.server.BaseQueryServer`
 
     :param funsrc: Python function source code.
     :type funsrc: basestring
@@ -381,6 +433,8 @@ def show_doc(server, funsrc, doc, req):
         'register_type': mime_provider.register_type
     }
     func = server.compile(funsrc, context=context)
+    log.debug('Run show %s\ndoc: %s\nreq: %s\nfunsrc:\n%s',
+              func, doc, req, funsrc)
     return render_function(func, [doc, req])
 
 def list_begin(server, head, req):
@@ -388,9 +442,13 @@ def list_begin(server, head, req):
 
     :command: list_begin
 
+    :param server: Query server instance.
+    :type server: :class:`~couchdb.server.BaseQueryServer`
+
     :param head: Headers information.
-    :param req: Request information.
     :type head: dict
+
+    :param req: Request information.
     :type req: dict
 
     :return: Response object.
@@ -405,6 +463,7 @@ def list_begin(server, head, req):
         'row_number': 0,
         'prev_key': None
     }
+    log.debug('Run list begin %s\nhead: %s\nreq: %s', func, head, req)
     func = apply_context(func, response_with=response_with)
     return render_function(func, [head, None, req, None])
 
@@ -413,9 +472,13 @@ def list_row(server, row, req):
 
     :command: list_row
 
+    :param server: Query server instance.
+    :type server: :class:`~couchdb.server.BaseQueryServer`
+
     :param row: View result information.
-    :param req: Request information.
     :type row: dict
+
+    :param req: Request information.
     :type req: dict
 
     :return: Response object.
@@ -426,6 +489,7 @@ def list_row(server, row, req):
     """
     func = server.state['functions'][0]
     row_info = server.state['row_line'].get(func, None)
+    log.debug('Run list row %s\nrow: %s\nreq: %s', func, row, req)
     func = apply_context(func, response_with=response_with)
     assert row_info is not None
     resp = render_function(func, [None, row, req, row_info])
@@ -441,6 +505,9 @@ def list_tail(server, req):
 
     :command: list_tail
 
+    :param server: Query server instance.
+    :type server: :class:`~couchdb.server.BaseQueryServer`
+
     :param req: Request information.
     :type req: dict
 
@@ -452,5 +519,6 @@ def list_tail(server, req):
     """
     func = server.state['functions'][0]
     row_info = server.state['row_line'].pop(func, None)
+    log.debug('Run list row %s\nrow_info: %s\nreq: %s', func, row_info, req)
     func = apply_context(func, response_with=response_with)
     return render_function(func, [None, None, req, row_info])

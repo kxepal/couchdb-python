@@ -102,7 +102,6 @@ class ShowTestCase(unittest.TestCase):
         resp = render.show_doc(self.server, funsrc, self.doc, req)
         self.assertTrue('code' in resp)
         self.assertEqual(resp['code'], 406)
-        self.assertTrue(resp['body'].startswith('Not Acceptable'))
 
     def test_nowhere_to_fallback(self):
         def func(doc, req):
@@ -118,7 +117,43 @@ class ShowTestCase(unittest.TestCase):
         resp = render.show_doc(self.server, funsrc, self.doc, req)
         self.assertTrue('code' in resp)
         self.assertEqual(resp['code'], 406)
-        self.assertTrue(resp['body'].startswith('Not Acceptable'))
+
+    def test_error_in_resonse_with_handler_function(self):
+        def func(doc, req):
+            def foo():
+                raise Error('foo', 'bar')
+            register_type('foo', 'application/foo', 'application/x-foo')
+            return response_with(req, {
+                'foo': foo,
+            })
+        req = {'headers': {'Accept': 'application/foo'}}
+        funsrc = dedent(getsource(func))
+        self.assertRaises(exceptions.Error, render.show_doc,
+                          self.server, funsrc, self.doc, req)
+
+    def test_python_exception_in_show_doc(self):
+        def func(doc, req):
+            1/0
+        funsrc = dedent(getsource(func))
+        try:
+            render.show_doc(self.server, funsrc, self.doc, {})
+        except Exception, err:
+            self.assertTrue(isinstance(err, exceptions.Error))
+            self.assertEqual(err.args[0], 'render_error')
+        else:
+            self.fail('render_error expected')
+
+    def test_invalid_show_doc_response(self):
+        def func(doc, req):
+            return object()
+        funsrc = dedent(getsource(func))
+        try:
+            render.show_doc(self.server, funsrc, self.doc, {})
+        except Exception, err:
+            self.assertTrue(isinstance(err, exceptions.Error))
+            self.assertEqual(err.args[0], 'render_error')
+        else:
+            self.fail('render_error expected')
 
     def test_show_provides(self):
         def func(doc, req):
