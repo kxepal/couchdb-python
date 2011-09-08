@@ -22,7 +22,7 @@ def receive(input=sys.stdin):
         line = input.readline()
         if not line:
             break
-        log.debug('Input:\n%s', line)
+        log.debug('Input:\n%r', line)
         try:
             yield json.decode(line)
         except Exception, err:
@@ -41,21 +41,13 @@ def respond(obj, output=sys.stdout):
         log.debug('Nothing to respond')
         return
     try:
-        obj = json.encode(obj)
+        obj = json.encode(obj) + '\n'
     except Exception, err:
         log.exception('Unable to encode object to json:\n%r', obj)
         raise FatalError('json_encode', str(err))
     else:
         if isinstance(obj, unicode):
             obj = obj.encode('utf-8')
-        log.debug('Output:\n%s', obj)
+        log.debug('Output:\n%r', obj)
         output.write(obj)
-        output.write('\n')
-        try:
-            output.flush()
-        except IOError:
-            log.exception('IOError occurred while output flushing.')
-            # This could happened if query server process have been terminated
-            # unexpectable. Probably, this exception is not one that would
-            # care us in such situation.
-            pass
+        output.flush()
