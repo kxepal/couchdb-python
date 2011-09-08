@@ -53,7 +53,7 @@ class DDoc(object):
 
         .. versionadded:: 0.11.0
         """
-        log.info('Cache design document `%s`', ddoc_id)
+        log.debug('Cache design document `%s`', ddoc_id)
         self.cache[ddoc_id] = ddoc
         return True
 
@@ -95,13 +95,13 @@ class DDoc(object):
             if point is None:
                 msg = 'Missed function `%s` in design doc `%s` by path: %s'
                 args = (item, ddoc_id, '/'.join(fun_path))
-                log.error(msg, args)
+                log.error(msg, *args)
                 raise Error('not_found', msg % args)
         else:
             func = point
             if type(func) is not FunctionType:
                 func = server.compile(func, ddoc)
                 prev[item] = func
-        log.info('Run function `%s` in design doc `%s` by path: %s',
-                 func.__name__, ddoc_id, '/'.join(fun_path))
+        log.debug('Run %s in design doc `%s` by path: %s',
+                  func, ddoc_id, '/'.join(fun_path))
         return handler(server, func, *fun_args)
