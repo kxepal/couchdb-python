@@ -99,7 +99,7 @@ class DDoc(object):
                 raise Error('not_found', msg % args)
         else:
             func = point
-            if type(func) is not FunctionType:
+            if not isinstance(func, FunctionType):
                 func = server.compile(func, ddoc)
                 prev[item] = func
         log.debug('Run %s in design doc `%s` by path: %s',
