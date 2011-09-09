@@ -261,6 +261,7 @@ class BaseQueryServer(object):
         if context is None:
             context = {}
         context.setdefault('log', self.log)
+        options.update(self.config)
         return compiler.compile_func(funsrc, ddoc, context, **options)
 
     def process_request(self, message):
