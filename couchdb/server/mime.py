@@ -6,7 +6,7 @@ from couchdb.server.exceptions import Error
 
 log = logging.getLogger(__name__)
 
-__all__ = ['best_match', 'MimeProvider']
+__all__ = ['best_match', 'MimeProvider', 'DEFAULT_TYPES']
 
 def parse_mimetype(mimetype):
     parts = mimetype.split(';')

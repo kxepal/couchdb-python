@@ -30,7 +30,7 @@ except ImportError:
         iter_modules = None
         zipimport = None
 
-__all__ = ['compile_func', 'require', 'context']
+__all__ = ['compile_func', 'require', 'DEFAULT_CONTEXT']
 
 log = logging.getLogger(__name__)
 
