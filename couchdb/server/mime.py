@@ -57,11 +57,9 @@ def best_match(supported, header):
     return weighted and weighted[-1][0][1] and weighted[-1][2] or ''
 
 
-# Some default types
-# Ported from Ruby on Rails
-# Build list of Mime types for HTTP responses
-# http://www.iana.org/assignments/media-types/
-# http://dev.rubyonrails.org/svn/rails/trunk/actionpack/lib/action_controller/mime_types.rb
+#: Some default types.
+#: Build list of `MIME types <http://www.iana.org/assignments/media-types/>`_ for HTTP responses.
+#: Ported from `Ruby on Rails <https://github.com/rails/rails/blob/v3.1.0/actionpack/lib/action_dispatch/http/mime_types.rb>`_
 DEFAULT_TYPES = {
     'all': ['*/*'],
     'text': ['text/plain; charset=utf-8', 'txt'],
@@ -81,10 +79,14 @@ DEFAULT_TYPES = {
     'url_encoded_form': ['application/x-www-form-urlencoded'],
     # http://www.ietf.org/rfc/rfc4627.txt
     'json': ['application/json', 'text/x-json']
+    # TODO: https://issues.apache.org/jira/browse/COUCHDB-1261
+    # 'kml', 'application/vnd.google-earth.kml+xml',
+    # 'kmz', 'application/vnd.google-earth.kmz'
 }
 
 
 class MimeProvider(object):
+    """Provides custom function depending on requested MIME type."""
 
     def __init__(self):
         self.mimes_by_key = {}
@@ -96,10 +98,12 @@ class MimeProvider(object):
             self.register_type(k, *v)
 
     def is_provides_used(self):
+        """Checks if any provides function is registered."""
         return bool(self.funcs_by_key)
 
     @property
     def resp_content_type(self):
+        """Returns actual response content type."""
         return self._resp_content_type
 
     def register_type(self, key, *args):

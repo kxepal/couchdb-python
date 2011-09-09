@@ -60,7 +60,7 @@ def compile_to_bytecode(funsrc):
     return compile(funsrc.replace('\r\n', '\n'), '<string>', 'exec')
 
 def maybe_b64egg(b64str):
-    """Checks if passed string probably is base64 encoded egg file"""
+    """Checks if passed string is base64 encoded egg file"""
     # Quick and dirty check for base64 encoded zipfile.
     # Saves time and IO operations in most cases.
     return isinstance(b64str, basestring) and b64str.startswith('UEsDBBQAAAAIA')
@@ -335,7 +335,7 @@ def compile_func(funsrc, ddoc=None, context=None, **options):
 
     :raises:
         - :exc:`~couchdb.server.exceptions.Error`
-          If compilation source code failed or it doesn't contains on function
+          If source code compilation failed or it doesn't contains function
           definition.
 
     .. note::
