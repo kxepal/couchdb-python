@@ -7,6 +7,7 @@ from couchdb.server import compiler, ddoc, exceptions, filters, render, \
                            state, stream, validate, views
 from couchdb.server.helpers import partial, maybe_extract_source
 
+__all__ = ['BaseQueryServer', 'SimpleQueryServer']
 
 class NullHandler(logging.Handler):
     def emit(self, *args, **kwargs):
@@ -228,9 +229,9 @@ class BaseQueryServer(object):
     def log(self, message):
         """Log message to CouchDB output stream.
 
-        Output format:
-            till 0.11.0 version: {"log": message}
-            since 0.11.0 version: ["log", message]
+        .. versionchanged:: 0.11.0
+            Log message format has changed from ``{"log": message}`` to
+            ``["log", message]``
         """
         if self.version < (0, 11, 0):
             if message is None:
@@ -275,7 +276,7 @@ class BaseQueryServer(object):
         :returns: Command handler result.
         
         :raises:
-            - :exc:`~couchdb.server.exception.FatalError` if no handlers was
+            - :exc:`~couchdb.server.exceptions.FatalError` if no handlers was
               registered for processed command.
         """
         try:
@@ -285,7 +286,7 @@ class BaseQueryServer(object):
     
     def _process_request(self, message):
         cmd, args = message.pop(0), message
-        log.debug('Processing command `%s`', cmd)
+        log.debug('Process command `%s`', cmd)
         if cmd not in self.commands:
             raise exceptions.FatalError('unknown_command',
                                         'unknown command %s' % cmd)
@@ -339,37 +340,147 @@ class SimpleQueryServer(BaseQueryServer):
             self.commands['ddoc'] = ddoc.DDoc(ddoc_commands)
 
     def add_lib(self, mod):
+        """Runs ``add_lib`` command.
+
+        :param mod: Module in CommonJS style
+        :type mod: dict
+
+        :return: True
+
+        .. versionadded:: 1.1.0
+        """
         return self._process_request(['add_lib', mod])
 
     def add_fun(self, fun):
+        """Runs ``add_fun`` command.
+
+        :param fun: Function object or source string.
+        :type fun: function or str
+
+        :return: True
+
+        .. versionadded:: 0.8.0
+        """
         funsrc = maybe_extract_source(fun)
         return self._process_request(['add_fun', funsrc])
 
     def add_ddoc(self, ddoc):
+        """Runs ``ddoc`` command to teach query server new design document.
+
+        :param ddoc: Design document. Should contains ``_id`` key.
+        :type ddoc: dict
+
+        :return: True
+
+        .. versionadded:: 0.11.0
+        """
         return self._process_request(['ddoc', 'new', ddoc['_id'], ddoc])
 
     def map_doc(self, doc):
+        """Runs ``map_doc`` command to apply known map functions to doc.
+        Requires at least one stored function via :meth:`add_fun`.
+
+        :param doc: Document object.
+        :type doc: dict
+
+        :return: List of key-values pairs per applied function.
+
+        .. versionadded:: 0.8.0
+        """
         return self._process_request(['map_doc', doc])
 
     def reduce(self, funs, keysvalues):
-        funsrcs = map(maybe_extract_source, funs)
+        """Runs ``reduce`` command.
+
+        :param funs: List of function objects or source strings.
+        :type funs: list
+
+        :param keysvalues: List of 2-element tuples with key and value.
+        :type: list
+
+        :return: Two-element list with True value and list of values per
+                 reduce function.
+
+        .. versionadded:: 0.8.0
+        """
+        funsrcs = [maybe_extract_source(fun) for fun in funs]
         return self._process_request(['reduce', funsrcs, keysvalues])
 
     def rereduce(self, funs, values):
-        funsrcs = map(maybe_extract_source, funs)
+        """Runs ``rereduce`` command.
+
+        :param funs: List of function objects or source strings.
+        :type funs: list
+
+        :param values: List of 2-element tuples with key and value.
+        :type: list
+
+        :return: Two-element list with True value and list of values per
+                 reduce function.
+
+        .. versionadded:: 0.8.0
+        """
+        funsrcs = [maybe_extract_source(fun) for fun in funs]
         return self._process_request(['rereduce', funsrcs, values])
 
     def reset(self, config=None):
+        """Runs ``reset`` command.
+
+        :param config: New query server config options.
+        :type config: dict
+
+        :return: True
+
+        .. versionadded:: 0.8.0
+        """
         if config:
             return self._process_request(['reset', config])
         else:
             return self._process_request(['reset'])
 
     def show_doc(self, fun, doc=None, req=None):
+        """Runs ``show_doc`` command.
+
+        :param fun: Function object or source string.
+        :type fun: function or str
+
+        :param doc: Document object.
+        :type doc: dict
+
+        :param req: Request object.
+        :type req: dict
+
+        :return: Two-element list with `resp` token and Response object.
+
+        .. versionadded:: 0.9.0
+        .. deprecated:: 0.10.0 Use :meth:`show` instead.
+        """
         funsrc = maybe_extract_source(fun)
         return self._process_request(['show_doc', funsrc, doc or {}, req or {}])
 
     def list_old(self, fun, rows, head=None, req=None):
+        """Runs ``list_begin``, ``list_row`` and ``list_tail`` commands.
+        Implicitly resets and adds passed function to query server state.
+
+        :param fun: Function object or source string.
+        :type fun: function or str
+
+        :param rows: View result rows as list of dicts with `id`, `key`
+                     and `value` keys.
+        :type rows: list
+
+        :param req: Request object.
+        :type req: dict
+
+        :yield: Two-element lists with token and response object.
+                 First element is for ``list_begin`` command with `start` token,
+                 last one is for ``list_tail`` command with `end` token
+                 and others for ``list_row`` commands with `chunk` token.
+
+        .. versionadded:: 0.9.0
+        .. deprecated:: 0.10.0 Use :meth:`list` instead.
+        """
+        self.reset()
         self.add_fun(fun)
         head, req = head or {}, req or {}
         yield self._process_request(['list_begin', head, req])
@@ -378,10 +489,47 @@ class SimpleQueryServer(BaseQueryServer):
         yield self._process_request(['list_tail', req])
 
     def show(self, fun, doc=None, req=None):
+        """Runs ``show`` command.
+
+        :param fun: Function object or source string.
+        :type fun: function or str
+
+        :param doc: Document object.
+        :type doc: dict
+
+        :param req: Request object.
+        :type req: dict
+
+        :return: Two-element list with `resp` token and Response object.
+
+        .. versionadded:: 0.10.0
+        .. deprecated:: 0.11.0 Use :meth:`ddoc_show` instead.
+        """
         funsrc = maybe_extract_source(fun)
         return self._process_request(['show', funsrc, doc or {}, req or {}])
 
     def list(self, fun, rows, head=None, req=None):
+        """Runs ``list`` command.
+        Implicitly resets and adds passed function to query server state.
+
+        :param fun: Function object or source string.
+        :type fun: function or str
+
+        :param rows: View result rows as list of dicts with `id`, `key`
+                     and `value` keys.
+        :type rows: list
+
+        :param req: Request object.
+        :type req: dict
+
+        :return: Two-element lists with token and data chunks.
+                 First element is for ``list_begin`` command with `start` token,
+                 last one is for ``list_tail`` command with `end` token
+                 and others for ``list_row`` commands with `chunk` token.
+
+        .. versionadded:: 0.10.0
+        .. deprecated:: 0.11.0 Use :meth:`ddoc_list` instead.
+        """
         self.reset()
         self.add_fun(fun)
 
@@ -399,32 +547,144 @@ class SimpleQueryServer(BaseQueryServer):
         self._receive, self._respond = _input, _output
         return result
 
-    def update(self, func, doc=None, req=None):
-        funstr = maybe_extract_source(func)
+    def update(self, fun, doc=None, req=None):
+        """Runs ``update`` command.
+
+        :param fun: Function object or source string.
+        :type fun: function or str
+
+        :param doc: Document object.
+        :type doc: dict
+
+        :param req: Request object.
+        :type req: dict
+
+        :return: Three-element list with ``up`` token, new document object
+                 and response object.
+
+        .. versionadded:: 0.10.0
+        .. deprecated:: 0.11.0 Use :meth:`ddoc_update` instead.
+        """
+        funstr = maybe_extract_source(fun)
         return self._process_request(['update', funstr, doc or {}, req or {}])
 
-    def filter(self, func, docs, req=None):
+    def filter(self, fun, docs, req=None):
+        """Runs ``filter`` command.
+        Implicitly resets and adds passed function to query server state.
+
+        :param fun: Function object or source string.
+        :type fun: function or str
+
+        :param docs: List of document objects.
+        :type docs: list
+
+        :param req: Request object.
+        :type req: dict
+
+        :return: List of chunks.
+
+        .. versionadded:: 0.10.0
+        .. deprecated:: 0.11.0 Use :meth:`ddoc_filter` instead.
+        """
         self.reset()
-        self.add_fun(func)
+        self.add_fun(fun)
         return self._process_request(['filter', docs, req or {}])
 
-    def validate_doc_update(self, func, olddoc=None, newdoc=None, userctx=None):
-        funsrc = maybe_extract_source(func)
+    def validate_doc_update(self, fun, olddoc=None, newdoc=None, userctx=None):
+        """Runs ``validate`` command.
+
+        :param fun: Function object or source string.
+        :type fun: function or str
+
+        :param olddoc: Document object.
+        :type olddoc: dict
+
+        :param newdoc: Document object.
+        :type newdoc: dict
+
+        :param userctx: User context object.
+        :type userctx: dict
+
+        :return: 1
+
+        .. versionadded:: 0.10.0
+        .. deprecated:: 0.11.0 Use :meth:`ddoc_validate_ddoc_update` instead.
+        """
+        funsrc = maybe_extract_source(fun)
         args = [olddoc or {}, newdoc or {}, userctx or {}]
         return self._process_request(['validate', funsrc] + args)
 
     def ddoc_cmd(self, ddoc_id, cmd, func_path, func_args):
-        assert isinstance(func_path, list)
-        assert isinstance(func_args, list)
+        """Runs ``ddoc`` command.
+        Requires teached ddoc by :meth:`add_ddoc`.
+
+        :param ddoc_id: DDoc id.
+        :type ddoc_id: str
+
+        :param cmd: Command name.
+        :type cmd: str
+
+        :param func_path: List of keys which holds filter function within ddoc.
+        :type func_path: list
+
+        :param func_args: List of design function arguments.
+        :type func_args: list
+
+        :return: Returned value depended from executed command.
+
+        .. versionadded:: 0.11.0
+        """
         if not func_path or func_path[0] != cmd:
             func_path.insert(0, cmd)
         return self._process_request(['ddoc',  ddoc_id, func_path, func_args])
 
     def ddoc_show(self, ddoc_id, func_path, doc=None, req=None):
+        """Runs ``ddoc`` ``shows`` command.
+        Requires teached ddoc by :meth:`add_ddoc`.
+
+        :param ddoc_id: DDoc id.
+        :type ddoc_id: str
+
+        :param func_path: List of keys which holds filter function within ddoc.
+        :type func_path: list
+
+        :param doc: Document object.
+        :type doc: dict
+
+        :param req: Request object.
+        :type req: dict
+
+        :return: Two-element list with `resp` token and Response object.
+
+        .. versionadded:: 0.11.0
+        """
         args =  [doc or {}, req or {}]
         return self.ddoc_cmd(ddoc_id, 'shows', func_path, args)
 
     def ddoc_list(self, ddoc_id, func_path, rows, head=None, req=None):
+        """Runs ``ddoc`` ``lists`` command.
+        Requires teached ddoc by :meth:`add_ddoc`.
+
+        :param ddoc_id: DDoc id.
+        :type ddoc_id: str
+
+        :param func_path: List of keys which holds filter function within ddoc.
+        :type func_path: list
+
+        :param rows: View result rows as list of dicts with `id`, `key`
+                     and `value` keys.
+        :type rows: list
+
+        :param req: Request object.
+        :type req: dict
+
+        :return: Two-element lists with token and data chunks.
+                 First element is for ``list_begin`` command with `start` token,
+                 last one is for ``list_tail`` command with `end` token
+                 and others for ``list_row`` commands with `chunk` token.
+
+        .. versionadded:: 0.11.0
+        """
         args = [head or {}, req or {}]
 
         result, input_rows = [], []
@@ -442,34 +702,114 @@ class SimpleQueryServer(BaseQueryServer):
         return result
 
     def ddoc_update(self, ddoc_id, func_path, doc=None, req=None):
+        """Runs ``ddoc`` ``updates`` command.
+        Requires teached ddoc by :meth:`add_ddoc`.
+
+        :param ddoc_id: DDoc id.
+        :type ddoc_id: str
+
+        :param func_path: List of keys which holds filter function within ddoc.
+        :type func_path: list
+
+        :param doc: Document object.
+        :type doc: dict
+
+        :param req: Request object.
+        :type req: dict
+
+        :return: Three-element list with ``up`` token, new document object
+                 and response object.
+
+        .. versionadded:: 0.11.0
+        """
         args = [doc or {}, req or {}]
         return self.ddoc_cmd(ddoc_id, 'updates', func_path, args)
 
     def ddoc_filter(self, ddoc_id, func_path, docs, req=None, userctx=None):
+        """Runs ``ddoc`` ``filters`` command.
+        Requires teached ddoc by :meth:`add_ddoc`.
+
+        :param ddoc_id: DDoc id.
+        :type ddoc_id: str
+
+        :param func_path: List of keys which holds filter function within ddoc.
+        :type func_path: list
+
+        :param docs: List of document objects.
+        :type docs: list
+
+        :param req: Request object.
+        :type req: dict
+
+        :param userctx: User context object.
+        :type userctx: dict
+
+        :return: Two-element list with True and boolean value for each document
+                 which sign was document passed filter or not.
+
+        .. versionadded:: 0.11.0
+        """
         args = [docs, req or {}, userctx or {}]
         return self.ddoc_cmd(ddoc_id, 'filters', func_path, args)
 
     def ddoc_filter_view(self, ddoc_id, func_path, docs):
-        assert isinstance(docs, list)
+        """Runs ``ddoc`` ``views`` command.
+        Requires teached ddoc by :meth:`add_ddoc`.
+
+        :param ddoc_id: DDoc id.
+        :type ddoc_id: str
+
+        :param func_path: List of keys which holds filter function within ddoc.
+        :type func_path: list
+
+        :param docs: List of document objects.
+        :type docs: list
+
+        :return: Two-element list with True and boolean value for each document
+                 which sign was document passed filter or not.
+        """
         return self.ddoc_cmd(ddoc_id, 'views', func_path, docs)
 
     def ddoc_validate_doc_update(self, ddoc_id, olddoc=None,
                                  newdoc=None, userctx=None, secobj=None):
+        """Runs ``ddoc`` ``validate_doc_update`` command.
+        Requires teached ddoc by :meth:`add_ddoc`.
+
+        :param ddoc_id: DDoc id.
+        :type ddoc_id: str
+
+        :param olddoc: Document object.
+        :type olddoc: dict
+
+        :param newdoc: Document object.
+        :type newdoc: dict
+
+        :param userctx: User context object.
+        :type userctx: dict
+
+        :return: 1
+
+        .. versionadded:: 0.11.0
+        """
         args = [olddoc or {}, newdoc or {}, userctx or {}, secobj or {}]
         return self.ddoc_cmd(ddoc_id, 'validate_doc_update', [], args)
 
     @property
     def ddocs(self):
+        """Returns dict with registered ddocs"""
         return self.commands['ddoc']
 
     @property
     def functions(self):
+        """Returns dict with registered ddocs"""
         return self.state['functions']
 
     @property
     def query_config(self):
+        """Returns query server config which :meth:`reset` operates with"""
         return self.state['query_config']
 
     @property
     def view_lib(self):
+        """Returns stored view lib which could be added by :meth:`add_lib`"""
         return self.state['view_lib']
