@@ -8,11 +8,11 @@ from couchdb.server.helpers import partial
 
 __all__ = ['show', 'list', 'update',
            'show_doc', 'list_begin', 'list_row', 'list_tail',
-           'ChunkedReponder']
+           'ChunkedResponder']
 
 log = logging.getLogger(__name__)
 
-class ChunkedReponder(object):
+class ChunkedResponder(object):
 
     def __init__(self, input, output, mime_provider):
         self.gotrow = False
@@ -106,7 +106,7 @@ def is_doc_request_path(info):
 def run_show(server, func, doc, req):
     log.debug('Run show %s\ndoc: %s\nreq: %s', func, doc, req)
     mime_provider = mime.MimeProvider()
-    responder = ChunkedReponder(server.receive, server.respond, mime_provider)
+    responder = ChunkedResponder(server.receive, server.respond, mime_provider)
     func = apply_context(
         func,
         register_type = mime_provider.register_type,
@@ -178,7 +178,7 @@ def run_update(server, func, doc, req):
 def run_list(server, func, head, req):
     log.debug('Run list %s\nhead: %s\nreq: %s', func, head, req)
     mime_provider = mime.MimeProvider()
-    responder = ChunkedReponder(server.receive, server.respond, mime_provider)
+    responder = ChunkedResponder(server.receive, server.respond, mime_provider)
     func = apply_context(
         func,
         register_type = mime_provider.register_type,
