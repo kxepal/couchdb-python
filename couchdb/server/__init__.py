@@ -608,7 +608,7 @@ class SimpleQueryServer(BaseQueryServer):
         :return: 1
 
         .. versionadded:: 0.10.0
-        .. deprecated:: 0.11.0 Use :meth:`ddoc_validate_ddoc_update` instead.
+        .. deprecated:: 0.11.0 Use :meth:`ddoc_validate_doc_update` instead.
         """
         funsrc = maybe_extract_source(fun)
         args = [olddoc or {}, newdoc or {}, userctx or {}]
