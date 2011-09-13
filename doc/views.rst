@@ -1,5 +1,10 @@
+.. note:: All versions notes are for CouchDB, not couchdb-python.
+
 Writing document design functions in Python
-===========================================
+********************************************************************************
+
+Setup CouchDB
+================================================================================
 
 The couchdb-python package comes with a query server to allow you to write
 views and design functions in Python instead of JavaScript. When couchdb-python
@@ -36,136 +41,166 @@ it behavior or extend available features:
       server would try to use all implemented features for the latest supported
       version.
 
-.. note:: All versions notes are for CouchDB, not couchdb-python.
+Install on Android
+--------------------------------------------------------------------------------
 
-Context
------------------------
+To run couchdb-python query server on android you will have to do next steps:
+
+1. Install latest stable `Python for Andorid <http://code.google.com/p/python-for-android/>`_
+   application for Python support and `Mobile Futon <https://market.android.com/details?id=com.daleharvey.mobilefuton>`_
+   for CouchDB support.
+2. Copy couchdb package folder to ``/sdcard/com.googlecode.pythonforandroid/extras/python``
+3. Create somewhere file, for example at ``/sdcard/couchpy``, with next code:
+
+.. code-block:: sh
+
+    PYTHONPATH=/data/data/com.googlecode.pythonforandroid/files/python/lib/python2.6/lib-dynload
+    PYTHONPATH=${PYTHONPATH}:/mnt/sdcard/com.googlecode.pythonforandroid/extras/python
+    export PYTHONPATH
+    export PYTHONHOME=/data/data/com.googlecode.pythonforandroid/files/python
+    export LD_LIBRARY_PATH=/data/data/com.googlecode.pythonforandroid/files/python/lib
+    _PYTHONEXEC=/data/data/com.googlecode.pythonforandroid/files/python/bin/python
+    _QUERYSERVER=/mnt/sdcard/com.googlecode.pythonforandroid/extras/python/couchdb/view.py
+
+    ${_PYTHONEXEC} ${_QUERYSERVER} $@
+
+4. Add the following section to local.ini
+
+.. code-block:: text
+
+    [query_servers]
+    python=sh -e /sdcard/couchpy <query server arguments>
+
+5. Now you could run Pythonic Couchapps on your Android phone.
+
+Tested with:
+Google Nexus One 2.3.4, Mobile Futon 1.7, Py4A-r5, CouchDB 0.1-android
+
+Common objects
+================================================================================
+
+Design function context
+--------------------------------------------------------------------------------
 
 Each design function executes within special context of predefined objects,
-modules and functions. This context helps to operate
+modules and functions:
 
-    - :func:`~logging.log`: Message logger to output stream on info level.
-      Operates on ``couchdb.server.design_function`` channel. Note, that this
-      messages writes both into CouchDB server and couchdb-python logs.
-    - :mod:`~couchdb.json`: Active couchdb-python json module.
-    - :exc:`~couchdb.server.exceptions.FatalError`: Fatal exception which
-      would terminate query server.
-    - :exc:`~couchdb.server.exceptions.Error`: Non fatal exception which
-      terminates current operation, but not query server.
-    - :exc:`~couchdb.server.exceptions.Forbidden`: Non fatal exception which
-      signs access violation and doesn't terminate query server. Generates
-      warning log message instead of error.
-    - :func:`~couchdb.server.mime.register_type`: Registers mimetypes by
-      associated key.
-    - :func:`~couchdb.server.mime.provides`: Registers handler for specified
-      mime type key.
-    - :func:`~couchdb.server.render.start`: Initiates chunked response.
-    - :func:`~couchdb.server.render.send`: Sends response chunk.
-    - :func:`~couchdb.server.render.get_row`: Extracts next row from view result.
-    - :func:`~couchdb.server.compiler.require`: Provides access to
-      :ref:`cjs_modules`.
+    - :meth:`~couchdb.server.BaseQueryServer.log`:
+      Message logger to output stream.
+    - :mod:`~couchdb.json`:
+      Active couchdb-python json module.
+    - :exc:`~couchdb.server.exceptions.FatalError`:
+      Fatal exception that will terminate query server.
+    - :exc:`~couchdb.server.exceptions.Error`:
+      Non fatal exception that will terminate only current operation.
+    - :exc:`~couchdb.server.exceptions.Forbidden`:
+      Non fatal exception that signs access violation and doesn't terminate
+      query server. Generates warning log message instead of error.
+
+Additionally, :ref:`shows` and :ref:`lists` functions has access to set of
+functions that allows them control and customize server response:
+
+    - :func:`~couchdb.server.mime.MimeProvider.register_type`:
+      Registers mimetypes by associated key.
+    - :func:`~couchdb.server.mime.MimeProvider.provides`:
+      Registers handler for specified mime type key. If request mime matched
+      with one of provided hander will be executed.
+    - :meth:`~couchdb.server.render.ChunkedResponder.start`:
+      Initiates chunked response.
+    - :meth:`~couchdb.server.render.ChunkedResponder.send`:
+      Sends response chunk.
+    - :meth:`~couchdb.server.render.ChunkedResponder.get_row`:
+      Extracts next row from view result. For :ref:`lists` only!
+    - :func:`~couchdb.server.compiler.require`:
+      Provides access to :ref:`cjs_modules`.
 
 .. versionchanged:: 0.9.0
-    Added :func:`~couchdb.server.mime.provides`
-    and :func:`~couchdb.server.mime.register_type` mime functions.
+    Added :meth:`~couchdb.server.mime.MimeProvider.provides`
+    and :meth:`~couchdb.server.mime.MimeProvider.register_type` mime functions.
 .. versionchanged:: 0.9.0
     Added :func:`~couchdb.server.render.response_with` function.
 .. versionchanged:: 0.10.0
     Removed :func:`~couchdb.server.render.response_with` function.
 .. versionchanged:: 0.10.0
-    Added functions: :func:`~couchdb.server.render.start`,
-    :func:`~couchdb.server.render.send`,
-    :func:`~couchdb.server.render.get_row`
+    Added functions: :meth:`~couchdb.server.render.ChunkedResponder.start`,
+    :meth:`~couchdb.server.render.ChunkedResponder.sent`,
+    :meth:`~couchdb.server.render.ChunkedResponder.get_row`
 .. versionchanged:: 0.11.0
     Added :func:`~couchdb.server.compiler.require` function.
 
-Views
------------------------
+Customizing context
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-.. _map:
+To customize Python query server you need to create your own entrance point
+and replace couchpy path with it::
 
-Map
-^^^^^^^^^^^^^^^^^^^^^^^
+    [query_servers]
+    python=/usr/local/bin/custom-couch.py
 
-Map functions should take single argument as document dict object and emit
-two value list or tuple of key-value result. Normally, you would like to
-use yield statement for emitting result:
-
-.. code-block:: python
-
-    def mapfun(doc):
-        doc_has_tags = isinstance(doc.get('tags'), list)
-        if doc['type'] == 'post' and doc_has_tags:
-            for tag in doc['tags']:
-                yield tag.lower(), 1
-
-Note that the ``map`` function uses the Python ``yield`` keyword to emit
-values, where JavaScript views use an ``emit()`` function. However, you are free
-to use ``return`` instead of ``yield``:
+In ``custom-couch.py`` you may setup custom context, add new objects, replace
+default ones. For example:
 
 .. code-block:: python
 
-    def mapfun(doc):
-        doc_has_tags = isinstance(doc.get('tags'), list)
-        if doc['type'] == 'post' and doc_has_tags:
-            return [[tag.lower(), 1] for tag in doc['tags']]
+    # /usr/local
+    from couchdb.server import log
+    from couchdb.server.compiler import DEFAULT_CONTEXT
+    from couchdb.view import main
 
-But you should remember, that emitting huge result in one shot consumes much
-more memory than yielding it step by step.
+    import ijson
+    import re
 
-Each document object is `sealed` which means that it could changed without worry
-that next ``map`` function receives it in modified state.
+    # add new objects to context
+    DEFAULT_CONTEXT['datetime'] = datetime.datetime
+    DEFAULT_CONTEXT['re'] = re
+    DEFAULT_CONTEXT['ANSWER'] = 42
+    # replace default json module with another one
+    DEFAULT_CONTEXT['json'] = ijson
 
-Reduce and rereduce
-^^^^^^^^^^^^^^^^^^^^^^
+    # log all errors to xmpp via xmpppy
+    import xmpp
+    import logging
 
-Reduce functions takes two required arguments of keys and values lists - the
-result of map function - and optional third which signs if rereduce mode is
-active or not. There is third optional argument `rereduce` which signs is
-rereduce mode active or not.
+    class XMPPHandler(logging.Handler):
+        def __init__(self, sender_jid, sender_pwd, receiver_jid):
+            super(XMPPHandler, self).__init__()
 
-If ``reduce`` function result is twice longer than initial request than
-:exc:`~couchdb.server.exceptions.Error` exception would be raised.
-However, this behavior could be disabled by setting reduce_limit to False
-in CouchDB sever config (see query_server_config options section).
+            jid = xmpp.protocol.JID(sender_jid)
+            client = xmpp.Client(jid.getDomain())
 
-Remember that since CouchDB 0.11.0 version there are several builtin
-reduce functions that runs much faster than Python's one:
+            assert client.connect(), 'Unable connect to %s' % jid.getDomain()
 
-.. code-block:: python
+            assert client.auth(jid.getNode(), sender_pwd, resource='python-qs'),\
+                   'Unable make auth for %s' % sender_jid
 
-    # could be replaced by _sum
-    def reducefun(keys, values):
-        return sum(values)
+            client.sendInitPresence(requestRoster=0)
 
-    # could be replaced by _count
-    def reducefun(keys, values, rereduce):
-        if rereduce:
-            return sum(values)
-        else:
-            return len(values)
+            self.client = client
+            self.receiver = receiver_jid
 
-    # could be replaced by _stats
-    def reducefun(keys, values):
-        return {
-            'sum': sum(values),
-            'min': min(values),
-            'max': max(values),
-            'count': len(values),
-            'sumsqr': sum(v*v for v in values)
-        }
+        def emit(self, record):
+            message = self.format(record)
+            self.client.send(xmpp.protocol.Message(self.receiver, message))
 
+    if __name__ == '__main__':
+      xmpphandler = XMPPHandler(
+          sender_jid = 'couchjid@example.com',
+          sender_pwd = 'password',
+          receiver_jid = 'developer@example.com'
+      )
+      xmpphandler.setFormatter(
+          logging.Formatter('[%(asctime)s] [%(name)s] [%(levelname)s] %(message)s')
+      )
+      xmpphandler.setLevel(logging.ERROR)
+      log.addHandler(xmpphandler)
+      main()
 
-Common objects
------------------------
-
-Before you learn more design functions, there are some objects that are wide
-used by them. Let's take a look on this objects.
+.. warning:: Creating custom environment makes your CouchApp portabless!
 
 .. _request_object:
 
 Request object
-^^^^^^^^^^^^^^^^^^^^^^^
+--------------------------------------------------------------------------------
 
 `Request object` is dict which contains request information data. It forms from
 the actual HTTP request to CouchDB and some internal data which helps in request
@@ -174,10 +209,10 @@ procession:
     - info (`dict`): :ref:`dbinfo`.
     - id (`unicode`): Requested document id if it was or None.
     - uuid (`unicode`): UUID string generated for this request.
-    - method (`unicode` or `list`): Request method as unicode string for
+    - method (`unicode` or `list`): Request method as `unicode` string for
       `HEAD`, `GET`, `POST`, `PUT`, `DELETE`, `OPTIONS` and `TRACE` values and
-      as list of char codes for others.
-    - requested_path: Actual requested path if it was rewritted.
+      as `list` of char codes for others.
+    - requested_path (`list`): Actual requested path if it was rewritted.
     - path (`list`): List of path string chunks.
     - query (`dict`): URL query parameters. Note that multiple keys not
       supported and last key value suppress others.
@@ -185,8 +220,8 @@ procession:
     - body (`unicode`): Request body. For `GET` requests contains ``undefined``
       string value.
     - peer (`unicode`): Request source IP address.
-    - form (`dict`): Decoded body to key-value pairs if `Content-Type` header
-      is ``application/x-www-form-urlencoded``.
+    - form (`dict`): Decoded body to key-value pairs if `Content-Type` header is
+      ``application/x-www-form-urlencoded``.
     - cookie (`dict`): Related cookies.
     - userCtx (`dict`): :ref:`userctx`.
     - secObj (`dict`): :ref:`secobj`.
@@ -201,9 +236,9 @@ procession:
 .. _response_object:
 
 Response object
-^^^^^^^^^^^^^^^^^^^^^^^
+--------------------------------------------------------------------------------
 
-`Response object` as dict object that design functions (actually, :ref:`render`
+`Response object` is the dict object that design functions (actually, :ref:`render`
 ones) should return to CouchDB which transforms them into fulfill HTTP response:
 
     - code (`int`): Response HTTP status code.
@@ -228,7 +263,7 @@ automatically wrapped into ``{'body': ...}`` dict.
 .. _dbinfo:
 
 Database information
-^^^^^^^^^^^^^^^^^^^^^^^
+--------------------------------------------------------------------------------
 
 This dictionary hold information about database:
 
@@ -247,7 +282,7 @@ Same information could be also retrieved by HTTP request::
 
     GET http://couchdbserver:5984/dbname
 
-.. versionchanged:: 0.9.0 
+.. versionchanged:: 0.9.0
     Added ``db_name``, ``purge_seq``, ``instance_start_time`` fields.
 .. versionchanged:: 0.10.0
     Added ``disk_format_version`` field.
@@ -257,16 +292,16 @@ Same information could be also retrieved by HTTP request::
 .. _userctx:
 
 User context
-^^^^^^^^^^^^^^^^^^^^^^^
+--------------------------------------------------------------------------------
 
-User context (``userCtx``) is a `dict` object contained information about
+User context (``userCtx``) is a `dict` object that contains information about
 current CouchDB user, name and roles it has:
 
     - db (`unicode`): Current database name.
     - name (`unicode`): User name.
     - roles (`list`): List of user roles.
 
-For example, if name is ``None`` and ``_admin`` in `roles` so there might be
+For example, if `name` is ``None`` and `_admin` in `roles` so there might be
 admin party.
 
 This information could be also retrieved by HTTP request::
@@ -276,7 +311,7 @@ This information could be also retrieved by HTTP request::
 .. _secobj:
 
 Security object
-^^^^^^^^^^^^^^^^^^^^^^^
+--------------------------------------------------------------------------------
 
 Security object (``secobj``) is a `dict` holds database security information
 about who is admins and who is just readers:
@@ -295,7 +330,7 @@ This information could be also retrieved by HTTP request::
 .. _cjs_modules:
 
 Modules
-^^^^^^^^^^^^^^^^^^^^^^^
+================================================================================
 
 Modules are the major CouchDB feature since 0.11.0 version which allows to
 create modular design functions without needs to duplicate a lot of same
@@ -339,8 +374,8 @@ Each stored modules have access to additional global variables:
     - exports (`dict`): Shortcut to ``module['exports']`` dictionary.
 
 Lets place module above within design document under "lib/validate" path. This
-path should be readed as "there is field `lib` in design document that is the
-object and has field `validate`". Now this module could be used in next way:
+path should be read as "there is key `lib` in design document that contains
+dict object with field `validate`". Now this module could be used in next way:
 
 .. code-block:: python
 
@@ -362,11 +397,11 @@ object and has field `validate`". Now this module could be used in next way:
 .. _modules_eggs:
 
 Eggs
-^^^^^^^^^^^^^^^^^^^^^^^
+--------------------------------------------------------------------------------
 
 As unique feature of Python query server there is support of
 `eggs <http://peak.telecommunity.com/DevCenter/PythonEggs>`_ as modules. This
-feature could be activated manualдy by query server ``--enable-eggs`` command
+feature should be activated manually by passing ``--enable-eggs`` command
 line argument due to compatibility and security reasons: eggs could contains
 a very complex code that could be revised from the first sight.
 
@@ -376,10 +411,87 @@ successful decoded by :func:`base64.b64decode` function.
 For Python 2.4 version `setuptools <http://pypi.python.org/pypi/setuptools>`_
 package is the additional requirement.
 
+Views
+================================================================================
+
+.. _map:
+
+Map functions
+--------------------------------------------------------------------------------
+
+Map functions should take single argument as document dict object and emit
+two value list or tuple of key-value result. Normally, you would like to
+use yield statement for emitting result:
+
+.. code-block:: python
+
+  def mapfun(doc):
+      doc_has_tags = isinstance(doc.get('tags'), list)
+      if doc['type'] == 'post' and doc_has_tags:
+          for tag in doc['tags']:
+              yield tag.lower(), 1
+
+Note that the `map` function uses the Python ``yield`` keyword to emit values,
+where JavaScript views use an ``emit()`` function. However, you are free
+to use ``return`` instead of ``yield``:
+
+.. code-block:: python
+
+  def mapfun(doc):
+      doc_has_tags = isinstance(doc.get('tags'), list)
+      if doc['type'] == 'post' and doc_has_tags:
+          return [[tag.lower(), 1] for tag in doc['tags']]
+
+But you should remember, that emitting huge result in one shot consumes much
+more memory than yielding it step by step.
+
+Each document object is *sealed* which means that it could changed without worry
+that next `map` function receives it in modified state with cost of warning
+message in couchdb-python logs.
+
+Reduce and rereduce
+--------------------------------------------------------------------------------
+
+Reduce functions takes two required arguments of keys and values lists - the
+result of map function - and optional third which signs if rereduce mode is
+active or not. There is third optional argument `rereduce` which signs is
+rereduce mode active or not.
+
+If `reduce` function result is twice longer than initial request than
+:exc:`~couchdb.server.exceptions.Error` exception would be raised.
+However, this behavior could be disabled by setting reduce_limit to False
+in CouchDB sever config (see query_server_config options section).
+
+Remember that since CouchDB 0.11.0 version there are several builtin
+reduce functions that runs much faster than Python's one:
+
+.. code-block:: python
+
+    # could be replaced by _sum
+    def reducefun(keys, values):
+        return sum(values)
+
+    # could be replaced by _count
+    def reducefun(keys, values, rereduce):
+        if rereduce:
+            return sum(values)
+        else:
+            return len(values)
+
+    # could be replaced by _stats
+    def reducefun(keys, values):
+        return {
+            'sum': sum(values),
+            'min': min(values),
+            'max': max(values),
+            'count': len(values),
+            'sumsqr': sum(v*v for v in values)
+        }
+
 .. _shows:
 
 Shows
------------------------
+================================================================================
 
 Show functions are used to represent documents in various formats, commonly as
 HTML page with nicer formatting.
@@ -440,20 +552,25 @@ and even files (this one is CouchDB logo):
 .. seealso::
 
     CouchDB Wiki:
-        `Showing Documents <http://wiki.apache.org/couchdb/Formatting_with_Show_and_List#Showing_Documents>`_
+        - `Showing Documents <http://wiki.apache.org/couchdb/Formatting_with_Show_and_List#Showing_Documents>`_
 
     CouchDB Guide:
-        `Show Functions <http://guide.couchdb.org/editions/1/en/show.html>`_
+        - `Show Functions <http://guide.couchdb.org/editions/1/en/show.html>`_
+
+.. _lists:
 
 Lists
------------------------
+================================================================================
 
-When ``show`` functions used to customize document presentation, ``list`` ones
-are used for same task, but for :ref:``views`` result.
+When `show` functions used to customize document presentation, `list` ones
+are used for same task, but for :ref:`views` result.
+
+Old list api (<0.10)
+--------------------------------------------------------------------------------
 
 Lists protocol had been heavy changed between CouchDB 0.9.0 and 0.10.0 versions.
 
-For CouchDB 0.9 ``list`` function takes four arguments:
+For CouchDB 0.9 `list` functions takes four arguments:
     - head (`dict`): View result information.
     - row (`dict`): View result row.
     - req (`dict`): :ref:`request_object`.
@@ -475,8 +592,10 @@ and always should return :ref:`response_object`:
         else:
             return ''
 
+New list api (0.10+)
+--------------------------------------------------------------------------------
 
-Since CouchDB 0.10 ``list`` function takes only two arguments:
+Since CouchDB 0.10 `list` functions takes only two arguments:
     - head (`dict`): View result information.
     - req (`dict`): :ref:`request_object`.
 
@@ -493,8 +612,9 @@ and example above would be next:
         for row in get_row():
             send(row['value'])
 
-Note, that :func:`~couchdb.server.render.get_row` is a generator, which yields
-views rows, not a function as for javascript.
+.. note::
+  :meth:`~couchdb.server.render.ChunkedResponder.get_row` is a generator,
+  which yields views rows.
 
 .. versionadded:: 0.9.0
 .. versionchanged:: 0.10.0
@@ -503,27 +623,28 @@ views rows, not a function as for javascript.
 .. seealso::
 
     CouchDB Wiki:
-        `Listing Views with CouchDB 0.9 <http://wiki.apache.org/couchdb/Formatting_with_Show_and_List#Listing_Views_with_CouchDB_0.9>`_
-        `Listing Views with CouchDB 0.10 and later <http://wiki.apache.org/couchdb/Formatting_with_Show_and_List#Listing_Views_with_CouchDB_0.10_and_later>`_
-        
+      - `Listing Views with CouchDB 0.9 <http://wiki.apache.org/couchdb/Formatting_with_Show_and_List#Listing_Views_with_CouchDB_0.9>`_
+      - `Listing Views with CouchDB 0.10 and later <http://wiki.apache.org/couchdb/Formatting_with_Show_and_List#Listing_Views_with_CouchDB_0.10_and_later>`_
+
     CouchDB Guide:
-        `Transforming Views with List Functions <http://guide.couchdb.org/draft/transforming.html>`_
+      - `Transforming Views with List Functions <http://guide.couchdb.org/draft/transforming.html>`_
 
 .. _updates:
 
 Updates
------------------------
+================================================================================
 
-``Update`` functions allows to perform document creation or updation operations
-with custom complex logic which runs on CouchDB server side. By default, ``GET``
+`Update` functions allows to perform document creation or updation operations
+with custom complex logic which runs on CouchDB server side. By default, `GET`
 method is not allowed to these functions, but you may remove this behavior by
-passing``--allow-get-update`` argument to query server.
+passing ``--allow-get-update`` argument to query server.
 
-``update`` function should take two arguments:
+`Update` function should take two arguments:
     - doc (`dict`): Document object.
     - req (`dict`): :ref:`request_object`.
 
-Return value should be a two element list of `document` and :ref:`response_object`.
+Return value should be a two element list of document and
+:ref:`response_object`.
 
 | If the `document` is ``None`` than nothing will be committed to the database.
 | If `document` exists, it should already have an `_id` and `_rev` fields setted.
@@ -547,16 +668,18 @@ Return value should be a two element list of `document` and :ref:`response_objec
 
 .. seealso::
 
-    CouchDB Wiki:
-        `Document Update Handlers <http://wiki.apache.org/couchdb/Document_Update_Handlers>`_
+  CouchDB Wiki:
+    - `Document Update Handlers <http://wiki.apache.org/couchdb/Document_Update_Handlers>`_
+
+.. _filters:
 
 Filters
------------------------
+================================================================================
 
-``filter`` functions wide used with ``_changes`` feed and replications,
-extracting only sequences that has matched by function.
+This type of design functions wide used with ``_changes`` feed and replications,
+extracting only sequences that passed by filter conditions.
 
-``filter`` function takes 2 arguments:
+`Filter` function takes 2 arguments:
     - doc (`dict`): Document which is proceed by filter.
     - req (`dict`): :ref:`request_object`.
 
@@ -568,7 +691,7 @@ through filter and ``False`` if not.
     def filterfun(doc, req):
         return doc.get('type', '') == 'post'
 
-To make ``filter`` function compatible with old CouchDB servers, third argument
+To make `filter` function compatible with old CouchDB servers, third argument
 must be setted as optional:
 
 .. code-block:: python
@@ -579,22 +702,22 @@ must be setted as optional:
         return doc.get('type', '') == 'post' and 'writer' in userctx['role']
 
 .. versionadded:: 0.10.0
-.. versionchanged:: 0.11.1 Argument userctx no longer have passed.
-    Use ``req['userCtx']`` instead.
+.. versionchanged:: 0.11.1
+    Argument `userctx` no longer have passed. Use ``req['userCtx']`` instead.
 
 .. seealso::
 
     CouchDB Guide:
-      `Guide to filter change notification <http://guide.couchdb.org/draft/notifications.html#filters>`_
+      - `Guide to filter change notification <http://guide.couchdb.org/draft/notifications.html#filters>`_
 
     CouchDB Wiki:
-      `Filtered replication <http://wiki.apache.org/couchdb/Replication#Filtered_Replication>`_
+      - `Filtered replication <http://wiki.apache.org/couchdb/Replication#Filtered_Replication>`_
 
 Validate
------------------------
+================================================================================
 
 To perform validate operations on document saving there is special design
-function type called ``validate_doc_update``.
+function type called `validate_doc_update`.
 
 This function should take next four arguments:
     - newdoc (`dict`): Changed document object.
@@ -602,13 +725,14 @@ This function should take next four arguments:
     - userctx (`dict`): :ref:`userctx`
     - secobj (`dict`): :ref:`secobj`
 
-However, since ``secobj`` argument doesn't mentioned in most part of
+However, since `secobj` argument doesn't mentioned in most part of
 documentation nor examples it leaved as optional, but with cost of warning
 message in logs.
 
-``validate_doc_update`` functions should raise
+`validate_doc_update` functions should raise
 :exc:`~couchdb.server.exceptions.Forbidden` exception to prevent document
-storing within database. Builtin ``AssertionError`` exception works in same way.
+storing within database. Builtin :exc:`AssertionError` exception  works in same
+way.
 
 Example (for 0.11.1+):
 
@@ -639,15 +763,16 @@ Another example, more complex and portable:
         return True
 
 Note, that return statement used only for function exiting and it doesn't
-controls validate state.
+controls validation process.
 
 .. versionadded:: 0.9.0
-.. versionchanged:: 0.11.1 Added argument ``secobj``.
+.. versionchanged:: 0.11.1
+    Added argument `secobj`.
 
 .. seealso::
 
     CouchDB Guide:
-      `Validation Functions <http://guide.couchdb.org/editions/1/en/validation.html>`_
+        - `Validation Functions <http://guide.couchdb.org/editions/1/en/validation.html>`_
 
     CouchDB Wiki:
-      `Document Update Validation <http://wiki.apache.org/couchdb/Document_Update_Validation>`_
+        - `Document Update Validation <http://wiki.apache.org/couchdb/Document_Update_Validation>`_
