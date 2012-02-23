@@ -14,7 +14,10 @@ def parse_mimetype(mimetype):
     fulltype = parts[0].strip()
     if fulltype == '*':
         fulltype = '*/*'
-    typeparts = fulltype.split('/')
+    if '/' in fulltype:
+        typeparts = fulltype.split('/', 2)
+    else:
+        typeparts = fulltype, None
     return typeparts[0], typeparts[1], params
 
 def parse_media_range(range):

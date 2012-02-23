@@ -65,6 +65,11 @@ class MimeToolsTestCase(MimeTestCase):
         self.assertTrue('x-foo/baz' in self.provider.keys_by_mime)
         self.assertEqual(self.provider.keys_by_mime['x-foo/baz'], 'foo')
 
+    def test_parse_malformed_mimetype(self):
+        """should not raise IndexError exception if MIME type is invalid"""
+        mime.parse_mimetype('text')
+        mime.parse_mimetype('')
+
 
 class ProvidesTestCase(MimeTestCase):
 
