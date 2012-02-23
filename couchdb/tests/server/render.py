@@ -231,6 +231,18 @@ class ShowTestCase(unittest.TestCase):
         else:
             self.fail('Show function should return dict or string value')
 
+    def test_show_function_has_no_access_to_get_row(self):
+        def func(doc, req):
+            for row in get_row():
+                pass
+        try:
+            token, resp = render.run_show(self.server, func, self.doc, {})
+        except Exception, err:
+            self.assertTrue(isinstance(err, exceptions.Error))
+            self.assertEqual(err.args[0], 'render_error')
+        else:
+            self.fail('Show function should not has get_row() method in scope.')
+
                 
 class ListTestCase(unittest.TestCase):
 

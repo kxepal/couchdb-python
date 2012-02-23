@@ -112,8 +112,7 @@ def run_show(server, func, doc, req):
         register_type = mime_provider.register_type,
         provides = mime_provider.provides,
         start = responder.start,
-        send = responder.send,
-        get_row = responder.get_row
+        send = responder.send
     )
     try:
         resp = func(doc, req) or {}
