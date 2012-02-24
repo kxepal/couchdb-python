@@ -202,6 +202,67 @@ class ShowTestCase(unittest.TestCase):
         self.assertEqual(token, 'resp')
         self.assertEqual(resp['body'], '1, 2, 3, 4, 5, 6, 7!')
 
+    def test_show_provides_return_status_code_or_headers(self):
+        # https://issues.apache.org/jira/browse/COUCHDB-1330
+        def func(doc, req):
+            def text():
+                return {
+                    'headers': {
+                        'Location': 'http://www.iriscouch.com'
+                    },
+                    'code': 302,
+                    'body': 'Redirecting to IrisCouch website...'
+                }
+            provides('text', text)
+        token, resp = render.run_show(self.server, func, self.doc, {})
+        self.assertEqual(token, 'resp')
+        self.assertTrue('headers' in resp)
+        self.assertTrue('Location' in resp['headers'])
+        self.assertEqual(resp['headers']['Location'], 'http://www.iriscouch.com')
+        self.assertTrue('code' in resp)
+        self.assertEqual(resp['code'], 302)
+
+    def test_show_provides_return_json_or_base64_body(self):
+    # https://issues.apache.org/jira/browse/COUCHDB-1330
+        def func(doc, req):
+            def text():
+                return {
+                    'code': 419,
+                    'json': {'foo': 'bar'}
+                }
+            provides('text', text)
+        token, resp = render.run_show(self.server, func, self.doc, {})
+        self.assertEqual(token, 'resp')
+        self.assertTrue('code' in resp)
+        self.assertTrue(resp['code'], 419)
+        self.assertEqual(resp['json'], {'foo': 'bar'})
+
+    def test_show_provided_resp_overrides_original_resp_data(self):
+        # https://issues.apache.org/jira/browse/COUCHDB-1330
+        def func(doc, req):
+            def text():
+                return {
+                    'code': 419,
+                    'headers': {
+                        'X-Couchdb-Python': 'Relax!'
+                    },
+                    'json': {'foo': 'bar'}
+                }
+            provides('text', text)
+            return {
+                'code': 200,
+                'headers': {
+                    'Content-Type': 'text/plain'
+                },
+                'json': {'boo': 'bar!'}
+            }
+        token, resp = render.run_show(self.server, func, self.doc, {})
+        self.assertEqual(token, 'resp')
+        self.assertTrue('code' in resp)
+        self.assertTrue(resp['code'], 419)
+        self.assertEqual(resp['headers'], {'X-Couchdb-Python': 'Relax!'})
+        self.assertEqual(resp['json'], {'foo': 'bar'})
+
     def test_show_invalid_start_func_headers(self):
         def func(doc, req):
             start({
