@@ -77,11 +77,11 @@ def maybe_compile_function(source):
         return compile_to_bytecode(source)
     return None
 
-def maybe_export_bytecode(source, context, globals_):
+def maybe_export_bytecode(source, context):
     """Tries to extract export statements from executed bytecode source"""
     if isinstance(source, CodeType):
-        exec source in context, globals_
-        return globals_.get('exports', {})
+        exec source in context
+        return context.get('exports', {})
     return None
 
 def maybe_export_cached_egg(source):
@@ -279,11 +279,11 @@ def require(ddoc, context=None, **options):
         _visited_ids.append(new_module['id'])
         source = new_module['current']
 
-        globals_ = {
+        module_context = context.copy()
+        module_context.update({
             'module': new_module,
             'exports': new_module['exports'],
-        }
-        module_context = context.copy()
+        })
         module_context['require'] = lambda path: require(path, new_module)
         enable_eggs = options.get('enable_eggs', False)
         egg_cache = options.get('egg_cache', None)
@@ -303,7 +303,7 @@ def require(ddoc, context=None, **options):
                 cache_to_ddoc(ddoc, new_module['id'].split('/'), bytecode)
                 source = bytecode
             try:
-                exports = maybe_export_bytecode(source, module_context, globals_)
+                exports = maybe_export_bytecode(source, module_context)
                 if exports is not None:
                     return exports
             except Exception, err:

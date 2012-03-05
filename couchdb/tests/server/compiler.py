@@ -111,6 +111,22 @@ class DDocModulesTestCase(unittest.TestCase):
         result = ' - '.join([exports['title'], exports['body']])
         self.assertEqual(result, 'The Answer - 42')
 
+    def test_required_modules_has_global_namespace_access(self):
+        ddoc = {
+            '_id': 'foo',
+            'lib': {
+                'egg': DUMMY_EGG,
+                'utils.py': (
+                    "import math\n"
+                    "def foo():\n"
+                    "  return math.cos(0)\n"
+                    "exports['foo'] = foo")
+            }
+        }
+        require = compiler.require(ddoc, enable_eggs=True)
+        exports = require('lib/utils.py')
+        self.assertEqual(exports['foo'](), 1)
+
     def test_fail_on_resolving_deadlock(self):
         ddoc = {
             'lib': {
