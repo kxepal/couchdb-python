@@ -8,150 +8,18 @@
 # you should have received as part of this distribution.
 
 """Implementation of a view server for functions written in Python."""
-
-from codecs import BOM_UTF8
-import logging
 import os
 import sys
-import traceback
-from types import FunctionType
 
 from couchdb import json
+from couchdb.server import SimpleQueryServer
 
 __all__ = ['main', 'run']
 __docformat__ = 'restructuredtext en'
 
-log = logging.getLogger('couchdb.view')
-
-
-def run(input=sys.stdin, output=sys.stdout):
-    r"""CouchDB view function handler implementation for Python.
-
-    :param input: the readable file-like object to read input from
-    :param output: the writable file-like object to write output to
-    """
-    functions = []
-
-    def _writejson(obj):
-        obj = json.encode(obj)
-        if isinstance(obj, unicode):
-            obj = obj.encode('utf-8')
-        output.write(obj)
-        output.write('\n')
-        output.flush()
-
-    def _log(message):
-        if not isinstance(message, basestring):
-            message = json.encode(message)
-        _writejson({'log': message})
-
-    def reset(config=None):
-        del functions[:]
-        return True
-
-    def add_fun(string):
-        string = BOM_UTF8 + string.encode('utf-8')
-        globals_ = {}
-        try:
-            exec string in {'log': _log}, globals_
-        except Exception, e:
-            return {'error': {
-                'id': 'map_compilation_error',
-                'reason': e.args[0]
-            }}
-        err = {'error': {
-            'id': 'map_compilation_error',
-            'reason': 'string must eval to a function '
-                      '(ex: "def(doc): return 1")'
-        }}
-        if len(globals_) != 1:
-            return err
-        function = globals_.values()[0]
-        if type(function) is not FunctionType:
-            return err
-        functions.append(function)
-        return True
-
-    def map_doc(doc):
-        results = []
-        for function in functions:
-            try:
-                results.append([[key, value] for key, value in function(doc)])
-            except Exception, e:
-                log.error('runtime error in map function: %s', e,
-                          exc_info=True)
-                results.append([])
-                _log(traceback.format_exc())
-        return results
-
-    def reduce(*cmd, **kwargs):
-        code = BOM_UTF8 + cmd[0][0].encode('utf-8')
-        args = cmd[1]
-        globals_ = {}
-        try:
-            exec code in {'log': _log}, globals_
-        except Exception, e:
-            log.error('runtime error in reduce function: %s', e,
-                      exc_info=True)
-            return {'error': {
-                'id': 'reduce_compilation_error',
-                'reason': e.args[0]
-            }}
-        err = {'error': {
-            'id': 'reduce_compilation_error',
-            'reason': 'string must eval to a function '
-                      '(ex: "def(keys, values): return 1")'
-        }}
-        if len(globals_) != 1:
-            return err
-        function = globals_.values()[0]
-        if type(function) is not FunctionType:
-            return err
-
-        rereduce = kwargs.get('rereduce', False)
-        results = []
-        if rereduce:
-            keys = None
-            vals = args
-        else:
-            if args:
-                keys, vals = zip(*args)
-            else:
-                keys, vals = [], []
-        if function.func_code.co_argcount == 3:
-            results = function(keys, vals, rereduce)
-        else:
-            results = function(keys, vals)
-        return [True, [results]]
-
-    def rereduce(*cmd):
-        # Note: weird kwargs is for Python 2.5 compat
-        return reduce(*cmd, **{'rereduce': True})
-
-    handlers = {'reset': reset, 'add_fun': add_fun, 'map_doc': map_doc,
-                'reduce': reduce, 'rereduce': rereduce}
-
-    try:
-        while True:
-            line = input.readline()
-            if not line:
-                break
-            try:
-                cmd = json.decode(line)
-                log.debug('Processing %r', cmd)
-            except ValueError, e:
-                log.error('Error: %s', e, exc_info=True)
-                return 1
-            else:
-                retval = handlers[cmd[0]](*cmd[1:])
-                log.debug('Returning  %r', retval)
-                _writejson(retval)
-    except KeyboardInterrupt:
-        return 0
-    except Exception, e:
-        log.error('Error: %s', e, exc_info=True)
-        return 1
-
+def run(input=sys.stdin, output=sys.stdout, version=None, **config):
+    qs = SimpleQueryServer(version, input=input, output=output, **config)
+    return qs.serve_forever()
 
 _VERSION = """%(name)s - CouchDB Python %(version)s
 
@@ -166,53 +34,64 @@ The exit status is 0 for success or 1 for failure.
 
 Options:
 
-  --version             display version information and exit
-  -h, --help            display a short help message and exit
-  --json-module=<name>  set the JSON module to use ('simplejson', 'cjson',
-                        or 'json' are supported)
-  --log-file=<file>     name of the file to write log messages to, or '-' to
-                        enable logging to the standard error stream
-  --debug               enable debug logging; requires --log-file to be
-                        specified
+  --version               display version information and exit
+  -h, --help              display a short help message and exit
+  --json-module=<name>    set the JSON module to use ('simplejson', 'cjson',
+                          or 'json' are supported)
+  --log-file=<file>       log file path.
+  --log-level=<level>     specify logging level (debug, info, warn, error).
+                          Used info level if omitted.
+  --allow-get-update      allows GET requests to call update functions.
+  --enable-eggs           enables support of eggs as modules.
+  --egg-cache=<path>      specifies egg cache dir. If omitted, PYTHON_EGG_CACHE
+                          environment variable value would be used or system
+                          temporary directory if variable not setted.
+  --couchdb-version=<ver> define with which version of couchdb server will work
+                          default: latest implemented.
+                          Supports from 0.9.0 to 1.1.0 and trunk. Technicaly
+                          should work with 0.8.0.
+                          e.g.: --couchdb-version=0.9.0
 
 Report bugs via the web at <http://code.google.com/p/couchdb-python>.
 """
-
 
 def main():
     """Command-line entry point for running the view server."""
     import getopt
     from couchdb import __version__ as VERSION
-
+    qs_config = {}
     try:
         option_list, argument_list = getopt.gnu_getopt(
             sys.argv[1:], 'h',
-            ['version', 'help', 'json-module=', 'debug', 'log-file=']
+            ['version', 'help', 'json-module=', 'log-level=', 'log-file=',
+             'couchdb-version=', 'enable-eggs', 'egg-cache', 'allow-get-update']
         )
-
+        version = None
         message = None
         for option, value in option_list:
-            if option in ('--version'):
+            if option in ['--version']:
                 message = _VERSION % dict(name=os.path.basename(sys.argv[0]),
                                       version=VERSION)
-            elif option in ('-h', '--help'):
+            elif option in ['-h', '--help']:
                 message = _HELP % dict(name=os.path.basename(sys.argv[0]))
-            elif option in ('--json-module'):
+            elif option in ['--json-module']:
                 json.use(module=value)
-            elif option in ('--debug'):
-                log.setLevel(logging.DEBUG)
-            elif option in ('--log-file'):
-                if value == '-':
-                    handler = logging.StreamHandler(sys.stderr)
-                    handler.setFormatter(logging.Formatter(
-                        ' -> [%(levelname)s] %(message)s'
-                    ))
-                else:
-                    handler = logging.FileHandler(value)
-                    handler.setFormatter(logging.Formatter(
-                        '[%(asctime)s] [%(levelname)s] %(message)s'
-                    ))
-                log.addHandler(handler)
+            elif option in ['--log-level']:
+                qs_config['log_level'] = value.upper()
+            elif option in ['--log-file']:
+                qs_config['log_file'] = value
+            elif option in ['--allow-get-update']:
+                qs_config['allow_get_update'] = True
+            elif option in ['--enable-eggs']:
+                qs_config['enable_eggs'] = True
+            elif option in ['--egg-cache']:
+                qs_config['egg_cache'] = value
+            elif option in ['--couchdb-version']:
+                if value.lower() != 'trunk':
+                    version = value.split('.')
+                    while len(version) < 3:
+                        version.append(0)
+                    version = tuple(map(int, version[:3]))
         if message:
             sys.stdout.write(message)
             sys.stdout.flush()
@@ -225,8 +104,7 @@ def main():
         sys.stderr.write(message)
         sys.stderr.flush()
         sys.exit(1)
-
-    sys.exit(run())
+    sys.exit(run(version=version, **qs_config))
 
 
 if __name__ == '__main__':
