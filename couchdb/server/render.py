@@ -75,7 +75,9 @@ class ChunkedResponder(object):
                       Would be converted to unicode string.
         :type chunk: unicode or utf-8 encoded string preferred.
         """
-        self.chunks.append(unicode(chunk))
+        if not isinstance(chunk, unicode):
+            chunk = unicode(chunk, 'utf-8')
+        self.chunks.append(chunk)
 
     def blow_chunks(self, label='chunks'):
         log.debug('Send chunks')
