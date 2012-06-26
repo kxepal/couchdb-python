@@ -105,7 +105,6 @@ def resolve_module(names, mod, root=None):
                 '\n    parent: %r'
                 '\n    current: %r'
                 '\n    root: %r') % (idx, names, parent, current, root)
-    log.debug('Resolve module at %s. Current frame: %s', names, mod)
     idx = mod.get('id')
     parent = mod.get('parent')
     current = mod.get('current')
@@ -113,14 +112,15 @@ def resolve_module(names, mod, root=None):
         if not isinstance(current, (basestring, CodeType, EggExports)):
             raise Error('invalid_require_path',
                         'Must require Python string, code object or egg cache,'
-                        ' not %r' % current)
-        log.debug('Found object by id %s:\n%s', idx, current)
+                        ' not %r (at %s)' % (type(current), idx))
+        log.debug('Found object by id %s', idx)
         return {
             'current': current,
             'parent': parent,
             'id': idx,
             'exports': {}
         }
+    log.debug('Resolving module at %s, remain path: %s', (idx, names))
     name = names.pop(0)
     if not name:
         raise Error('invalid_require_path',
