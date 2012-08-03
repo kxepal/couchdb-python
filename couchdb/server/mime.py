@@ -10,7 +10,13 @@ __all__ = ['best_match', 'MimeProvider', 'DEFAULT_TYPES']
 
 def parse_mimetype(mimetype):
     parts = mimetype.split(';')
-    params = dict([item.split('=', 2) for item in parts if '=' in item])
+    params = {}
+    for item in parts[1:]:
+        if '=' in item:
+            key, value = item.split('=', 2)
+        else:
+            key, value = item, None
+        params[key] = value
     fulltype = parts[0].strip()
     if fulltype == '*':
         fulltype = '*/*'
