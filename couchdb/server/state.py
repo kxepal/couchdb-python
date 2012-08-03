@@ -27,6 +27,8 @@ def reset(server, config=None):
     if config is not None:
         log.debug('Set new query config:\n%s', config)
         server.state['query_config'].update(config)
+    if server.version >= (1, 1, 0):
+        server.state['view_lib'] = ''
     return True
 
 def add_fun(server, funsrc):
